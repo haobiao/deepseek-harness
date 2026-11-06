@@ -7,7 +7,7 @@
 
 import iconv from 'iconv-lite'
 import { wholeCharsetLength } from './boundaries.ts'
-import type { LegacyCharset } from './boundaries.ts'
+import type { ByteView, LegacyCharset } from './boundaries.ts'
 import { asBuffer } from './detect.ts'
 import { UndecodableTextError, UnencodableTextError } from './types.ts'
 import type { TextEncoding } from './types.ts'
@@ -24,7 +24,7 @@ function isLegacy(encoding: TextEncoding): encoding is LegacyCharset {
  * sample that read as UTF-8 only because its head was ASCII refuses the file
  * rather than returning mangled text the caller would write back.
  */
-function decodeStrictUtf8(data: Uint8Array): string {
+function decodeStrictUtf8(data: ByteView): string {
   try {
     return utf8Strict.decode(data)
   } catch {
@@ -40,7 +40,7 @@ function decodeStrictUtf8(data: Uint8Array): string {
  * @throws UndecodableTextError when the bytes do not decode: invalid UTF-8, or a
  *   file no charset restores.
  */
-export function decodeText(data: Uint8Array, encoding: TextEncoding): string {
+export function decodeText(data: ByteView, encoding: TextEncoding): string {
   switch (encoding) {
     case 'utf8':
       return decodeStrictUtf8(data)
@@ -62,7 +62,7 @@ export function decodeText(data: Uint8Array, encoding: TextEncoding): string {
  * @throws UnencodableTextError when a legacy charset cannot represent a
  *   character; the write must fail rather than change the file's encoding.
  */
-export function encodeText(text: string, encoding: TextEncoding): Uint8Array {
+export function encodeText(text: string, encoding: TextEncoding): Buffer {
   switch (encoding) {
     case 'utf8':
     case 'lossy-utf8':
@@ -81,7 +81,7 @@ export function encodeText(text: string, encoding: TextEncoding): Uint8Array {
  * of failing, so the round trip is the only way to tell a faithful write from a
  * corrupting one.
  */
-function encodeLegacy(text: string, encoding: LegacyCharset): Uint8Array {
+function encodeLegacy(text: string, encoding: LegacyCharset): Buffer {
   const bytes = iconv.encode(text, encoding)
   const restored = iconv.decode(bytes, encoding)
   if (restored === text) return bytes
@@ -94,16 +94,16 @@ function encodeLegacy(text: string, encoding: LegacyCharset): Uint8Array {
 /** One incrementally-fed decoder: `push` per byte chunk, `end` once at EOF. */
 export interface StreamDecoder {
   /** Decode the next chunk, holding back a trailing partial character. */
-  push(chunk: Uint8Array): string
+  push(chunk: ByteView): string
   /** Decode whatever the last chunk held back; a truncated tail becomes U+FFFD. */
   end(): string
 }
 
 /** Decoder for a charset whose sequences are self-delimiting: hold back the partial tail. */
 function legacyStreamDecoder(charset: LegacyCharset): StreamDecoder {
-  let carry = new Uint8Array(0)
+  let carry: ByteView = new Uint8Array(0)
   return {
-    push(chunk: Uint8Array): string {
+    push(chunk: ByteView): string {
       const data = carry.length === 0 ? chunk : Buffer.concat([asBuffer(carry), asBuffer(chunk)])
       const whole = wholeCharsetLength(data, charset)
       carry = data.subarray(whole)
@@ -134,7 +134,7 @@ export function createStreamDecoder(encoding: TextEncoding): StreamDecoder {
   }
   const decoder = new TextDecoder('utf-8', { fatal: true })
   return {
-    push(chunk: Uint8Array): string {
+    push(chunk: ByteView): string {
       try {
         return decoder.decode(chunk, { stream: true })
       } catch {

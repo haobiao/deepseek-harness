@@ -11,7 +11,7 @@ import { createReadStream, realpath as realpathCallback } from 'node:fs'
 import { chmod, link, lstat, mkdir, open, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
 import type { BigIntStats, Dirent, Stats } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
-import { TextDecoder, promisify } from 'node:util'
+import { promisify } from 'node:util'
 import { homedir } from 'node:os'
 import { FsError, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
 import { copyFileDaclWin32, replaceFileWin32 } from './win32.ts'
@@ -25,7 +25,7 @@ import {
   UndecodableTextError,
   UnencodableTextError,
 } from './encoding/index.ts'
-import type { DetectedTextEncoding, StreamDecoder, TextEncoding } from './encoding/index.ts'
+import type { ByteView, DetectedTextEncoding, StreamDecoder, TextEncoding } from './encoding/index.ts'
 
 const BINARY_SAMPLE_BYTES = 8192
 /** Bytes sampled to detect a file's encoding; a larger file decides from this head. */
@@ -401,7 +401,7 @@ function notTextError(verb: 'read' | 'edit', displayPath: string): FsError {
  *   end of the sample is trimmed instead of read as proof against the encoding.
  * @returns the chosen encoding and the whole-character prefix it covers.
  */
-function decideEncoding(data: Uint8Array, options: TextEncodingOptions, continues: boolean): DetectedTextEncoding {
+function decideEncoding(data: ByteView, options: TextEncodingOptions, continues: boolean): DetectedTextEncoding {
   if (!options.detectLegacy) {
     // Strict UTF-8: a BOM is the only other answer worth the bytes. No legacy
     // round trip runs, so a non-UTF-8 file fails its strict decode as before.
@@ -431,7 +431,7 @@ function decideEncoding(data: Uint8Array, options: TextEncodingOptions, continue
  * @throws FsError `FS_NOT_TEXT` for a binary or undecodable file.
  */
 function decodeWholeFile(
-  raw: Uint8Array,
+  raw: ByteView,
   displayPath: string,
   verb: 'read' | 'edit',
   options: TextEncodingOptions,
@@ -720,7 +720,7 @@ function writeIoError(path: string, error: unknown): unknown {
  * @param encoding - the encoding the file is stored in.
  * @returns the bytes to publish.
  */
-function encodeForWrite(content: string, displayPath: string, encoding: TextEncoding): Uint8Array {
+function encodeForWrite(content: string, displayPath: string, encoding: TextEncoding): Buffer {
   try {
     return encodeText(content, encoding)
   } catch (error: unknown) {
