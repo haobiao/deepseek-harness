@@ -8,7 +8,7 @@
 
 import iconv from 'iconv-lite'
 import { isValidUtf8, trimPartialUtf8, wholeCharsetLength } from './boundaries.ts'
-import type { ByteView, LegacyCharset } from './boundaries.ts'
+import type { LegacyCharset } from './boundaries.ts'
 import type { DetectedTextEncoding } from './types.ts'
 
 /**
@@ -24,7 +24,7 @@ const UTF8_BOM_SECOND = 0xbb
 const UTF8_BOM_THIRD = 0xbf
 
 /** Whether the sample opens with the UTF-8 BOM. */
-export function startsWithUtf8Bom(data: ByteView): boolean {
+export function startsWithUtf8Bom(data: Uint8Array): boolean {
   return data.length >= UTF8_BOM_LENGTH
     && data[0] === UTF8_BOM_FIRST
     && data[1] === UTF8_BOM_SECOND
@@ -32,11 +32,11 @@ export function startsWithUtf8Bom(data: ByteView): boolean {
 }
 
 /** A view over `data` as a Buffer, without copying when it already is one. */
-export function asBuffer(data: ByteView): Buffer {
+export function asBuffer(data: Uint8Array): Buffer {
   return Buffer.isBuffer(data) ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength)
 }
 
-function bytesEqual(left: ByteView, right: ByteView): boolean {
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   if (left.length !== right.length) return false
   for (let index = 0; index < left.length; index += 1) {
     if (left[index] !== right[index]) return false
@@ -49,7 +49,7 @@ function bytesEqual(left: ByteView, right: ByteView): boolean {
  * A pure decode is no signal: the decoder turns an invalid sequence into U+FFFD,
  * which encodes back as different bytes.
  */
-export function roundTrips(data: ByteView, charset: LegacyCharset): boolean {
+export function roundTrips(data: Uint8Array, charset: LegacyCharset): boolean {
   if (data.length === 0) return false
   const text = iconv.decode(asBuffer(data), charset)
   return bytesEqual(iconv.encode(text, charset), data)
@@ -69,7 +69,7 @@ export function roundTrips(data: ByteView, charset: LegacyCharset): boolean {
  * @returns the encoding and the length of the leading whole-character prefix
  *   the decision covers.
  */
-export function detectEncoding(data: ByteView, options: { fragment?: boolean } = {}): DetectedTextEncoding {
+export function detectEncoding(data: Uint8Array, options: { fragment?: boolean } = {}): DetectedTextEncoding {
   const fragment = options.fragment === true
   if (startsWithUtf8Bom(data)) {
     // The BOM is whole by construction; the content after it can still be cut.

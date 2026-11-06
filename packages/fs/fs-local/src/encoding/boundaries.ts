@@ -12,13 +12,6 @@ const UTF8_MAX_BYTES = 4
 /** A dual-charset whose sequences `wholeCharsetLength` can measure. */
 export type LegacyCharset = 'gb18030' | 'gbk'
 
-/**
- * Byte view accepted at every encoding entry point. Widened past the default
- * `ArrayBuffer` so a `Buffer` read from disk and a `subarray` of one both pass
- * without a cast — the conversions here never depend on the backing store.
- */
-export type ByteView = Uint8Array<ArrayBufferLike>
-
 const utf8Probe = new TextDecoder('utf-8', { fatal: true })
 
 /**
@@ -26,13 +19,13 @@ const utf8Probe = new TextDecoder('utf-8', { fatal: true })
  * trail byte distinct from a real `0x00` and spares every read a bounds branch
  * of its own.
  */
-function byteAt(data: ByteView, index: number): number {
+function byteAt(data: Uint8Array, index: number): number {
   if (index >= data.length) return -1
   return data[index] ?? -1
 }
 
 /** Whether `data` is valid UTF-8. Uses the strict decoder the read path also enforces. */
-export function isValidUtf8(data: ByteView): boolean {
+export function isValidUtf8(data: Uint8Array): boolean {
   try {
     utf8Probe.decode(data)
     return true
@@ -57,7 +50,7 @@ function utf8SequenceLength(lead: number): number {
  * continuation bytes, so a fixed window lands mid-character about two times in
  * three and the whole file decodes as the wrong charset.
  */
-export function trimPartialUtf8(data: ByteView): ByteView {
+export function trimPartialUtf8(data: Uint8Array): Uint8Array {
   for (let index = data.length - 1; index >= 0 && data.length - index < UTF8_MAX_BYTES + 1; index -= 1) {
     const lead = byteAt(data, index)
     if ((lead & 0xc0) === 0x80) continue
@@ -75,7 +68,7 @@ export function trimPartialUtf8(data: ByteView): ByteView {
  * ordinary two-byte sequence in GBK. Bytes the charset would reject are left in
  * the prefix, where the caller's round-trip check fails on them as intended.
  */
-export function wholeCharsetLength(data: ByteView, charset: LegacyCharset): number {
+export function wholeCharsetLength(data: Uint8Array, charset: LegacyCharset): number {
   let index = 0
   while (index < data.length) {
     const lead = byteAt(data, index)

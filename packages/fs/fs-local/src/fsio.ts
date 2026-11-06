@@ -25,7 +25,7 @@ import {
   UndecodableTextError,
   UnencodableTextError,
 } from './encoding/index.ts'
-import type { ByteView, DetectedTextEncoding, StreamDecoder, TextEncoding } from './encoding/index.ts'
+import type { DetectedTextEncoding, StreamDecoder, TextEncoding } from './encoding/index.ts'
 
 const BINARY_SAMPLE_BYTES = 8192
 /** Bytes sampled to detect a file's encoding; a larger file decides from this head. */
@@ -401,7 +401,7 @@ function notTextError(verb: 'read' | 'edit', displayPath: string): FsError {
  *   end of the sample is trimmed instead of read as proof against the encoding.
  * @returns the chosen encoding and the whole-character prefix it covers.
  */
-function decideEncoding(data: ByteView, options: TextEncodingOptions, continues: boolean): DetectedTextEncoding {
+function decideEncoding(data: Uint8Array, options: TextEncodingOptions, continues: boolean): DetectedTextEncoding {
   if (!options.detectLegacy) {
     // Strict UTF-8: a BOM is the only other answer worth the bytes. No legacy
     // round trip runs, so a non-UTF-8 file fails its strict decode as before.
@@ -431,7 +431,7 @@ function decideEncoding(data: ByteView, options: TextEncodingOptions, continues:
  * @throws FsError `FS_NOT_TEXT` for a binary or undecodable file.
  */
 function decodeWholeFile(
-  raw: ByteView,
+  raw: Uint8Array,
   displayPath: string,
   verb: 'read' | 'edit',
   options: TextEncodingOptions,
