@@ -23,7 +23,11 @@ const UTF8_BOM_FIRST = 0xef
 const UTF8_BOM_SECOND = 0xbb
 const UTF8_BOM_THIRD = 0xbf
 
-/** Whether the sample opens with the UTF-8 BOM. */
+/**
+ * Whether the sample opens with the UTF-8 BOM.
+ * @param data - the bytes to inspect; fewer than three cannot carry a BOM.
+ * @returns whether the first three bytes are the UTF-8 BOM.
+ */
 export function startsWithUtf8Bom(data: Uint8Array): boolean {
   return data.length >= UTF8_BOM_LENGTH
     && data[0] === UTF8_BOM_FIRST
@@ -31,7 +35,11 @@ export function startsWithUtf8Bom(data: Uint8Array): boolean {
     && data[2] === UTF8_BOM_THIRD
 }
 
-/** A view over `data` as a Buffer, without copying when it already is one. */
+/**
+ * A view over `data` as a Buffer, without copying when it already is one.
+ * @param data - any byte view handed in by a caller.
+ * @returns the same bytes as a Buffer, sharing the caller's backing store.
+ */
 export function asBuffer(data: Uint8Array): Buffer {
   return Buffer.isBuffer(data) ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength)
 }
@@ -48,6 +56,9 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
  * Whether `data` decodes in `charset` and re-encodes to the same bytes.
  * A pure decode is no signal: the decoder turns an invalid sequence into U+FFFD,
  * which encodes back as different bytes.
+ * @param data - the bytes to prove against `charset`.
+ * @param charset - the legacy charset to decode and re-encode through.
+ * @returns whether the round trip restores `data` byte for byte.
  */
 export function roundTrips(data: Uint8Array, charset: LegacyCharset): boolean {
   if (data.length === 0) return false

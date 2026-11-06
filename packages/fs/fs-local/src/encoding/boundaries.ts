@@ -24,7 +24,11 @@ function byteAt(data: Uint8Array, index: number): number {
   return data[index] ?? -1
 }
 
-/** Whether `data` is valid UTF-8. Uses the strict decoder the read path also enforces. */
+/**
+ * Whether `data` is valid UTF-8. Uses the strict decoder the read path also enforces.
+ * @param data - the bytes to validate.
+ * @returns whether the whole sample decodes as UTF-8.
+ */
 export function isValidUtf8(data: Uint8Array): boolean {
   try {
     utf8Probe.decode(data)
@@ -49,6 +53,8 @@ function utf8SequenceLength(lead: number): number {
  * almost any byte string — wins over CJK text, where most bytes are
  * continuation bytes, so a fixed window lands mid-character about two times in
  * three and the whole file decodes as the wrong charset.
+ * @param data - the byte sample, possibly ending mid-character.
+ * @returns the prefix that holds only whole UTF-8 characters.
  */
 export function trimPartialUtf8(data: Uint8Array): Uint8Array {
   for (let index = data.length - 1; index >= 0 && data.length - index < UTF8_MAX_BYTES + 1; index -= 1) {
@@ -67,6 +73,9 @@ export function trimPartialUtf8(data: Uint8Array): Uint8Array {
  * followed by `0x30`–`0x39` opens a four-byte sequence in GB18030 and an
  * ordinary two-byte sequence in GBK. Bytes the charset would reject are left in
  * the prefix, where the caller's round-trip check fails on them as intended.
+ * @param data - the byte sample, possibly ending mid-character.
+ * @param charset - the dual-charset whose sequence shapes decide the boundary.
+ * @returns the length of the prefix that holds whole charset sequences.
  */
 export function wholeCharsetLength(data: Uint8Array, charset: LegacyCharset): number {
   let index = 0
