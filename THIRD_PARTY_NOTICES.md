@@ -100,7 +100,7 @@ External packages installed for runtime use or embedded in distributed Host or b
 | [`fflate`](https://github.com/101arrowz/fflate) | MIT |
 | [`got`](https://github.com/sindresorhus/got) | MIT |
 | [`hosted-git-info`](https://github.com/npm/hosted-git-info) | ISC |
-| [`iconv-lite`](https://github.com/ashtuchkin/iconv-lite) | MIT |
+| [`iconv-lite`](https://github.com/pillarjs/iconv-lite) | MIT |
 | [`immer`](https://github.com/immerjs/immer) | MIT |
 | [`ipaddr.js`](https://github.com/whitequark/ipaddr.js) | MIT |
 | [`js-yaml`](https://github.com/nodeca/js-yaml) | MIT |
