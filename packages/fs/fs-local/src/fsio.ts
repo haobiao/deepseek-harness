@@ -1,7 +1,8 @@
 /**
- * Cordis-free local filesystem mechanics. This provider layer returns validated UTF-8 text,
- * streams large files, and rejects binary data; line windows belong to `dsh-tool-fs`. Writes
- * stage an exclusive owner-only file in a private sibling directory and atomically publish it.
+ * Cordis-free local filesystem mechanics. This provider layer returns validated text — UTF-8 or a
+ * detected legacy Chinese encoding, which a write-back preserves — streams large files, and rejects
+ * binary data; line windows belong to `dsh-tool-fs`. Writes stage an exclusive owner-only file in a
+ * private sibling directory and atomically publish it.
  * @module @deepseek-ai/dsh-fs-local/fsio
  */
 
@@ -14,11 +15,42 @@ import { TextDecoder, promisify } from 'node:util'
 import { homedir } from 'node:os'
 import { FsError, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
 import { copyFileDaclWin32, replaceFileWin32 } from './win32.ts'
+import {
+  createStreamDecoder,
+  decodeText,
+  detectEncoding,
+  encodeText,
+  startsWithUtf8Bom,
+  trimPartialUtf8,
+  UndecodableTextError,
+  UnencodableTextError,
+} from './encoding/index.ts'
+import type { DetectedTextEncoding, StreamDecoder, TextEncoding } from './encoding/index.ts'
 
 const BINARY_SAMPLE_BYTES = 8192
+/** Bytes sampled to detect a file's encoding; a larger file decides from this head. */
+const DEFAULT_ENCODING_SAMPLE_BYTES = 256 * 1024
 const realpath = promisify(realpathCallback.native)
 // Bound one non-abortable FileHandle.read so cancellation is observed between chunks.
 const DIFF_BASIS_READ_CHUNK_BYTES = 64 * 1024
+
+/**
+ * How far a text read may go to recognise a file that is not plain UTF-8.
+ * `detectLegacy` is the backend's `legacyEncodings` switch: off restores strict
+ * UTF-8, where every legacy file is rejected as before.
+ */
+export interface TextEncodingOptions {
+  /** Detect and read GB18030 and GBK, and keep a file's encoding across writes. */
+  detectLegacy: boolean
+  /** Bytes sampled for the decision; the sample bounds the detection cost. */
+  sampleBytes: number
+}
+
+/** Detection enabled at the default sample size — the `legacyEncodings` default. */
+export const DEFAULT_TEXT_ENCODING: TextEncodingOptions = {
+  detectLegacy: true,
+  sampleBytes: DEFAULT_ENCODING_SAMPLE_BYTES,
+}
 
 function isENOENT(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT'
@@ -358,30 +390,63 @@ export async function listDirectory(target: LocalTarget, signal?: AbortSignal): 
 // --- Reading ---
 
 function notTextError(verb: 'read' | 'edit', displayPath: string): FsError {
-  return new FsError(`cannot ${verb} "${displayPath}": invalid UTF-8 text`, 'FS_NOT_TEXT')
+  return new FsError(`cannot ${verb} "${displayPath}": not text in any supported encoding`, 'FS_NOT_TEXT')
 }
 
-function decodeUtf8(buffer: Uint8Array, verb: 'read' | 'edit', displayPath: string): string {
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(buffer)
-  } catch (error: unknown) {
-    /* v8 ignore next 2 -- TextDecoder({fatal}) only throws TypeError on invalid bytes; any other throw is an unreachable runtime fault. */
-    if (!(error instanceof TypeError)) throw error
-    throw notTextError(verb, displayPath)
+/**
+ * Decide a file's encoding from its bytes.
+ * @param data - the bytes to classify, whole or a bounded head sample.
+ * @param options - the backend's detection switch and sample bound.
+ * @param continues - whether more bytes follow `data`, so a character cut at the
+ *   end of the sample is trimmed instead of read as proof against the encoding.
+ * @returns the chosen encoding and the whole-character prefix it covers.
+ */
+function decideEncoding(data: Uint8Array, options: TextEncodingOptions, continues: boolean): DetectedTextEncoding {
+  if (!options.detectLegacy) {
+    // Strict UTF-8: a BOM is the only other answer worth the bytes. No legacy
+    // round trip runs, so a non-UTF-8 file fails its strict decode as before.
+    return {
+      encoding: startsWithUtf8Bom(data) ? 'utf8-bom' : 'utf8',
+      wholeLength: trimPartialUtf8(data).length,
+    }
   }
+  const limit = options.sampleBytes > 0 ? options.sampleBytes : data.length
+  const sample = limit < data.length ? data.subarray(0, limit) : data
+  return detectEncoding(sample, { fragment: continues || sample.length < data.length })
 }
 
-function decodeUtf8Stream(
-  decoder: TextDecoder,
-  chunk: Uint8Array | undefined,
-  verb: 'read' | 'edit',
+/**
+ * Decode a whole file's bytes under the encoding they were detected as.
+ *
+ * A bounded head sample cannot see past its own bytes, so a file whose head is
+ * plain ASCII reads as UTF-8 even when the rest is GBK. The strict decode then
+ * fails, and detection is retried over the whole content before the file is
+ * declared unreadable — the sample is a cost bound, never a correctness one.
+ * @param raw - the complete file bytes.
+ * @param displayPath - the caller-facing path used in error messages.
+ * @param verb - names the refused operation in that message.
+ * @param options - the backend's detection switch and sample bound.
+ * @returns the decoded text and the encoding it was read under, which a
+ *   write-back reuses so the file keeps its bytes.
+ * @throws FsError `FS_NOT_TEXT` for a binary or undecodable file.
+ */
+function decodeWholeFile(
+  raw: Uint8Array,
   displayPath: string,
-): string {
+  verb: 'read' | 'edit',
+  options: TextEncodingOptions,
+): { text: string; encoding: TextEncoding } {
+  const decided = decideEncoding(raw, options, false)
+  if (decided.encoding === 'lossy-utf8') throw notTextError(verb, displayPath)
   try {
-    return chunk ? decoder.decode(chunk, { stream: true }) : decoder.decode()
+    return { text: decodeText(raw, decided.encoding), encoding: decided.encoding }
   } catch (error: unknown) {
-    /* v8 ignore next 2 -- TextDecoder({fatal}) only throws TypeError on invalid bytes; any other throw is an unreachable runtime fault. */
-    if (!(error instanceof TypeError)) throw error
+    /* v8 ignore next -- decodeText only throws its own UndecodableTextError. */
+    if (!(error instanceof UndecodableTextError)) throw error
+    const retried = options.detectLegacy && raw.length > options.sampleBytes ? detectEncoding(raw) : undefined
+    if (retried !== undefined && (retried.encoding === 'gb18030' || retried.encoding === 'gbk')) {
+      return { text: decodeText(raw, retried.encoding), encoding: retried.encoding }
+    }
     throw notTextError(verb, displayPath)
   }
 }
@@ -401,20 +466,26 @@ async function statRegularFile(target: LocalTarget, verb: 'read', signal?: Abort
 }
 
 /**
- * Read a whole regular UTF-8 text file into a single decoded string. Rejects
- * non-regular files, invalid UTF-8, and NUL-byte binary samples.
+ * Read a whole regular text file into a single decoded string. Rejects
+ * non-regular files, invalid text, and NUL-byte binary samples. A file stored in
+ * a legacy Chinese encoding is decoded to the same text a UTF-8 file would hold.
  * @param target - the resolved file to read.
  * @param signal - aborts the read (`FS_ABORTED`).
+ * @param encodingOptions - the detection switch and sample bound to read under.
  * @returns the full decoded text, byte-for-byte (no normalization).
  */
-export async function readWholeText(target: LocalTarget, signal?: AbortSignal): Promise<string> {
+export async function readWholeText(
+  target: LocalTarget,
+  signal?: AbortSignal,
+  encodingOptions: TextEncodingOptions = DEFAULT_TEXT_ENCODING,
+): Promise<string> {
   await statRegularFile(target, 'read', signal)
   const raw = await readFileAbortable(target.targetKey, 'read', signal)
   throwIfAborted(signal, 'read')
   if (raw.subarray(0, BINARY_SAMPLE_BYTES).includes(0)) {
     throw new FsError(`cannot read "${target.displayPath}": binary file`, 'FS_NOT_TEXT')
   }
-  return decodeUtf8(raw, 'read', target.displayPath)
+  return decodeWholeFile(raw, target.displayPath, 'read', encodingOptions).text
 }
 
 /**
@@ -500,17 +571,26 @@ export async function readByteWindow(
 }
 
 /**
- * Stream a whole regular UTF-8 text file as decoded text chunks. Same text
- * semantics as {@link readWholeText} (regular-file check, binary/NUL rejection,
- * cross-chunk UTF-8 decoding), but never holds the whole file in memory.
+ * Stream a whole regular text file as decoded text chunks. Same text semantics
+ * as {@link readWholeText} (regular-file check, binary/NUL rejection, cross-chunk
+ * decoding), but never holds the whole file in memory: a bounded head sample
+ * decides the encoding and everything after it decodes in one pass.
  * @param target - the resolved file to stream.
  * @param signal - aborts the stream, including between chunks (`FS_ABORTED`).
+ * @param encodingOptions - the detection switch and sample bound to stream under.
  * @returns decoded text chunks in file order; chunk boundaries carry no meaning.
  */
-export async function* streamWholeText(target: LocalTarget, signal?: AbortSignal): AsyncIterable<string> {
+export async function* streamWholeText(
+  target: LocalTarget,
+  signal?: AbortSignal,
+  encodingOptions: TextEncodingOptions = DEFAULT_TEXT_ENCODING,
+): AsyncIterable<string> {
   await statRegularFile(target, 'read', signal)
   const stream = createReadStream(target.targetKey, signal ? { signal } : {})
-  const decoder = new TextDecoder('utf-8', { fatal: true })
+  const sampleBytes = Math.max(encodingOptions.sampleBytes, 1)
+  let head: Buffer[] = []
+  let headBytes = 0
+  let decoder: StreamDecoder | undefined
   let sampledBytes = 0
 
   function scanBinarySample(chunk: Buffer): void {
@@ -522,12 +602,46 @@ export async function* streamWholeText(target: LocalTarget, signal?: AbortSignal
     sampledBytes += sample.length
   }
 
+  function openHead(buffered: Buffer): { decoder: StreamDecoder; text: string } {
+    const decided = decideEncoding(buffered, encodingOptions, true)
+    if (decided.encoding === 'lossy-utf8') throw notTextError('read', target.displayPath)
+    try {
+      const text = decodeText(buffered.subarray(0, decided.wholeLength), decided.encoding)
+      const opened = createStreamDecoder(decided.encoding)
+      const carry = buffered.subarray(decided.wholeLength)
+      return { decoder: opened, text: carry.length === 0 ? text : text + opened.push(carry) }
+    } catch (error: unknown) {
+      /* v8 ignore next -- decodeText only throws its own UndecodableTextError. */
+      if (!(error instanceof UndecodableTextError)) throw error
+      throw notTextError('read', target.displayPath)
+    }
+  }
+
   try {
     for await (const chunk of stream as AsyncIterable<Buffer>) {
       scanBinarySample(chunk)
-      yield decodeUtf8Stream(decoder, chunk, 'read', target.displayPath)
+      if (decoder === undefined) {
+        head.push(chunk)
+        headBytes += chunk.length
+        if (headBytes < sampleBytes) continue
+        const opened = openHead(Buffer.concat(head))
+        decoder = opened.decoder
+        head = []
+        if (opened.text.length > 0) yield opened.text
+        continue
+      }
+      const text = decoder.push(chunk)
+      if (text.length > 0) yield text
     }
-    yield decodeUtf8Stream(decoder, undefined, 'read', target.displayPath)
+    if (decoder === undefined) {
+      // The whole file fit in the head sample, so decode it as a whole and keep
+      // the ASCII-head retry available.
+      const text = decodeWholeFile(Buffer.concat(head), target.displayPath, 'read', encodingOptions).text
+      if (text.length > 0) yield text
+      return
+    }
+    const tail = decoder.end()
+    if (tail.length > 0) yield tail
   } catch (error: unknown) {
     /* v8 ignore next 4 -- mid-stream errors need an abort/IO fault racing the loop; pre-abort is caught by throwIfAborted. */
     if (isAbortError(error)) throw new FsError('read aborted', 'FS_ABORTED')
@@ -599,13 +713,72 @@ function writeIoError(path: string, error: unknown): unknown {
 }
 
 /**
+ * Encode a write under the target file's encoding, reporting an unrepresentable
+ * character as `FS_NOT_ENCODABLE` rather than letting the charset substitute it.
+ * @param content - the LF-normalized content in its final line-ending style.
+ * @param displayPath - the caller-facing path used in the diagnostic.
+ * @param encoding - the encoding the file is stored in.
+ * @returns the bytes to publish.
+ */
+function encodeForWrite(content: string, displayPath: string, encoding: TextEncoding): Uint8Array {
+  try {
+    return encodeText(content, encoding)
+  } catch (error: unknown) {
+    /* v8 ignore next -- encodeText raises only its own UnencodableTextError. */
+    if (!(error instanceof UnencodableTextError)) throw error
+    throw new FsError(`cannot write "${displayPath}": ${error.message}`, 'FS_NOT_ENCODABLE', { cause: error })
+  }
+}
+
+/**
+ * Detect the encoding of an existing file from a bounded head read.
+ *
+ * A full overwrite would otherwise transcode the file to UTF-8, so a write to an
+ * existing GBK file must know what it is replacing. The sample bound keeps this
+ * proportional to file size only up to the configured sample, and a file no
+ * charset restores keeps today's behaviour: the write stores plain UTF-8.
+ * @param absolutePath - resolved path of the existing file.
+ * @param options - the backend's detection switch and sample bound.
+ * @param signal - aborts the sample (`FS_ABORTED`).
+ * @returns the encoding to write the replacement content in.
+ */
+export async function readFileEncoding(
+  absolutePath: string,
+  options: TextEncodingOptions = DEFAULT_TEXT_ENCODING,
+  signal?: AbortSignal,
+): Promise<TextEncoding> {
+  throwIfAborted(signal, 'write')
+  try {
+    const handle = await open(absolutePath, 'r')
+    try {
+      const info = await handle.stat()
+      const length = Math.min(info.size, Math.max(options.sampleBytes, 1))
+      const buffer = Buffer.allocUnsafe(length)
+      const bytesRead = length === 0 ? 0 : (await handle.read(buffer, 0, length, 0)).bytesRead
+      const decided = decideEncoding(buffer.subarray(0, bytesRead), options, bytesRead < info.size)
+      // A file no charset restores is being replaced wholesale, so UTF-8 is the
+      // only honest choice — the same one today's strict path makes.
+      return decided.encoding === 'lossy-utf8' ? 'utf8' : decided.encoding
+    } finally {
+      await handle.close()
+    }
+  } catch (error: unknown) {
+    /* v8 ignore next 2 -- a mid-read abort needs cancellation racing an open sample; pre-abort is caught by throwIfAborted. */
+    if (isAbortError(error)) throw new FsError('write aborted', 'FS_ABORTED')
+    // The encoding is a detail of how to store content, not whether to store it:
+    // a sampling fault falls back to UTF-8 instead of failing the write.
+    return 'utf8'
+  }
+}
+
+/**
  * Atomically replace a file through a private, synced staging file in the same directory.
  * POSIX protects the staging directory and file with `0o700` and `0o600`. A new Windows file
  * inherits the destination directory's DACL; a replacement copies the existing target's DACL
  * onto the empty temp before writing and preserves the target descriptor at publication.
  * Node write errors become FsError; permission refusals use FS_PERMISSION_DENIED and other I/O uses FS_IO_ERROR.
  * @param absolutePath - destination; missing parent directories are created.
- * @param content - the full UTF-8 text to write.
+ * @param content - the full text to write, encoded per `options.encoding`.
  * @param mode - POSIX mode to apply, or undefined to retain the new-file default.
  * @param signal - cancellation checked before final publication.
  * @param internals - Test hook for pinning temp names and observing the staged file.
@@ -613,7 +786,8 @@ function writeIoError(path: string, error: unknown): unknown {
  * `createIfAbsent` publishes with a hard-link no-replace primitive, so a concurrent creator's
  * file is preserved and this write is rejected with `FS_NOT_OBSERVED`; `existingDestination`
  * states whether Windows must preserve destination security and defaults to mode presence,
- * while moves pass destination presence separately from the source mode.
+ * while moves pass destination presence separately from the source mode; `encoding` states the
+ * encoding the content must be stored in, defaulting to plain UTF-8.
  */
 export async function writeFileAtomic(
   absolutePath: string,
@@ -621,11 +795,19 @@ export async function writeFileAtomic(
   mode: number | undefined,
   signal: AbortSignal | undefined,
   internals: FsIoInternals = {},
-  options: { displayPath?: string; createIfAbsent?: boolean; existingDestination?: boolean } = {},
+  options: {
+    displayPath?: string
+    createIfAbsent?: boolean
+    existingDestination?: boolean
+    encoding?: TextEncoding
+  } = {},
 ): Promise<void> {
   const displayPath = options.displayPath ?? absolutePath
   const existingDestination = options.existingDestination ?? mode !== undefined
   throwIfAborted(signal, 'write')
+  // Encode before staging anything: a character the file's encoding cannot hold
+  // must fail the write without leaving a temporary file behind.
+  const bytes = encodeForWrite(content, displayPath, options.encoding ?? 'utf8')
   const directory = dirname(absolutePath)
   try { await mkdir(directory, { recursive: true }) } catch (error) { throw writeIoError(displayPath, error) }
 
@@ -654,7 +836,7 @@ export async function writeFileAtomic(
     if (platform === 'win32' && existingDestination) {
       await copyFileDacl(absolutePath, tempPath)
     }
-    await handle.writeFile(content, { encoding: 'utf8', ...signal ? { signal } : {} })
+    await handle.writeFile(bytes, { ...signal ? { signal } : {} })
     await handle.sync()
     await internals.inspectTemp?.({ stagingDir, tempPath })
     if (mode !== undefined) await handle.chmod(mode)
@@ -764,27 +946,34 @@ function countOccurrences(content: string, needle: string): number {
 
 /**
  * Read and decode a file for editing: rejects binaries, returns LF-normalized
- * content plus the original line-ending style for write-back.
+ * content plus the original line-ending style and encoding for write-back.
  * @param absolutePath - the file to read (typically a target key).
  * @param displayPath - the caller-facing path used in error messages.
  * @param signal - aborts the read (`FS_ABORTED`).
- * @returns the LF-normalized content and the detected style to restore on write-back.
+ * @param encodingOptions - the detection switch and sample bound to read under.
+ * @returns the LF-normalized content, the style to restore, and the encoding the
+ *   write-back must store the result in.
  */
 export async function readForEdit(
   absolutePath: string,
   displayPath: string,
   signal?: AbortSignal,
-): Promise<{ content: string; lineEndings: LineEndings }> {
+  encodingOptions: TextEncodingOptions = DEFAULT_TEXT_ENCODING,
+): Promise<{ content: string; lineEndings: LineEndings; encoding: TextEncoding }> {
   throwIfAborted(signal, 'edit')
   const buffer = await readFileAbortable(absolutePath, 'edit', signal)
   throwIfAborted(signal, 'edit')
   if (buffer.includes(0)) throw new FsError(`cannot edit "${displayPath}": binary file`, 'FS_NOT_TEXT')
-  const raw = decodeUtf8(buffer, 'edit', displayPath)
-  return { content: normalizeLineEndings(raw), lineEndings: detectLineEndings(raw) }
+  const decoded = decodeWholeFile(buffer, displayPath, 'edit', encodingOptions)
+  return {
+    content: normalizeLineEndings(decoded.text),
+    lineEndings: detectLineEndings(decoded.text),
+    encoding: decoded.encoding,
+  }
 }
 
 /**
- * Best-effort overwrite diff basis. Binary, invalid UTF-8, a file at/above the byte limit,
+ * Best-effort overwrite diff basis. Binary, undecodable text, a file at/above the byte limit,
  * or a file deleted/made unreadable after the caller's preflight returns `null` so the write
  * still succeeds and presentation falls back to a whole-file diff. The bound is enforced on
  * the opened descriptor rather than a prior path stat, so concurrent external replacement or
@@ -792,13 +981,15 @@ export async function readForEdit(
  * @param absolutePath - the file to read (typically a target key).
  * @param maxBytes - exclusive upper bound for bytes held as the contextual-diff basis.
  * @param signal - aborts the read (`FS_ABORTED`); cancellation propagates, unlike I/O failure.
- * @returns the LF-normalized text, or null for a non-regular, at/above-limit, binary, non-UTF-8,
+ * @param encodingOptions - the detection switch and sample bound to decode under.
+ * @returns the LF-normalized text, or null for a non-regular, at/above-limit, binary, undecodable,
  * descriptor-size-changed, or unreadable file.
  */
 export async function readTextForDiff(
   absolutePath: string,
   maxBytes: number,
   signal?: AbortSignal,
+  encodingOptions: TextEncodingOptions = DEFAULT_TEXT_ENCODING,
 ): Promise<string | null> {
   throwIfAborted(signal, 'read')
   try {
@@ -829,12 +1020,14 @@ export async function readTextForDiff(
     if (total !== openedSize) return null
     const basis = buffer.subarray(0, total)
     if (basis.includes(0)) return null
+    const decided = decideEncoding(basis, encodingOptions, false)
+    if (decided.encoding === 'lossy-utf8') return null
     try {
-      return normalizeLineEndings(new TextDecoder('utf-8', { fatal: true }).decode(basis))
+      return normalizeLineEndings(decodeText(basis, decided.encoding))
     } catch (error: unknown) {
-      /* v8 ignore next 2 -- TextDecoder({fatal}) only throws TypeError on invalid bytes;
-       * any other throw is an unreachable runtime fault. */
-      if (!(error instanceof TypeError)) throw error
+      /* v8 ignore next -- decodeText raises only its own UndecodableTextError. */
+      if (!(error instanceof UndecodableTextError)) throw error
+      // Strict UTF-8 mode has no legacy retry, so a non-UTF-8 basis is declined.
       return null
     }
   } catch (error: unknown) {

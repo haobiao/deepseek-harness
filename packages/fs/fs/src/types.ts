@@ -133,7 +133,7 @@ export interface FsWriteOutcome {
   /**
    * The file's content BEFORE the write, or `null` when the file did not exist
    * (a create) or the backend declined a contextual basis (for example, a
-   * binary/non-UTF-8 prior file or either overwrite side reaching its exclusive limit).
+   * binary or undecodable prior file or either overwrite side reaching its exclusive limit).
    * LF-normalized storage text (the diff basis), never a diff — a consumer
    * computes the result-time contextual diff from `before`/`after` when
    * `before` is present, else falls back to a whole-file diff.
@@ -191,6 +191,7 @@ export const FS_ERROR_CODES = [
   'FS_NOT_FOUND',
   'FS_NOT_DIRECTORY',
   'FS_NOT_TEXT',
+  'FS_NOT_ENCODABLE',
   'FS_NOT_REGULAR_FILE',
   'FS_TOO_LARGE',
   'FS_PERMISSION_DENIED',
