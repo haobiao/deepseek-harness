@@ -70,7 +70,7 @@ jobs:
       attempt: ${{ steps.retained.outputs.attempt }}
       version: ${{ steps.settings.outputs.version }}
       mode: ${{ steps.settings.outputs.mode }}
-    runs-on: ${{ vars.DSH_CI_HOSTED_FALLBACK_WINDOWS || 'dsh-win-package-trial' }}
+    runs-on: dsh-win-package-trial
     timeout-minutes: 120
     defaults:
       run:
@@ -143,25 +143,6 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: '24'
-      - name: Create hosted packaging preset
-        # A hosted fallback runner owns no machine configuration directory, so it
-        # materialises the public test preset inline. Unsigned builds read no
-        # signing credentials, and the origins are placeholders, not deployments.
-        if: ${{ vars.DSH_CI_HOSTED_FALLBACK_WINDOWS != '' }}
-        run: |
-          $config = Join-Path $env:RUNNER_TEMP 'dsh-packaging-config'
-          New-Item -ItemType Directory -Path (Join-Path $config 'presets') -Force | Out-Null
-          @'
-          DSH_DESKTOP_APP_ID=com.deepseek.dsh
-          DSH_DESKTOP_AUTO_UPDATE_ENV=test
-          DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://update-test.dsh.invalid
-          DSH_DESKTOP_MANDATORY_UPDATE_CONFIG={"allowedAuthOrigins":["https://login.dsh.invalid"]}
-          DOWNLOAD_TEST_ORIGIN=https://download-test.dsh.invalid
-          DOWNLOAD_TEST_RELEASE_ID=0123456789abcdef0123456789abcdef
-          DSH_DESKTOP_WINDOWS_SIGNATURE_CACHE_CONCURRENCY=4
-          DSH_DESKTOP_WINDOWS_COMPRESSION_LEVEL=3
-          '@ | Set-Content -Path (Join-Path $config 'presets/test.env') -Encoding utf8
-          "DSH_PACKAGING_CONFIG_DIR=$config" >> $env:GITHUB_ENV
       - name: Configure persistent pnpm store
         # PNPM_HOME belongs to this run; keep downloaded packages outside its temporary directory.
         env:
@@ -187,7 +168,6 @@ jobs:
           pnpm install --frozen-lockfile
           exit $LASTEXITCODE
       - name: Check original machine archival route
-        if: ${{ vars.DSH_CI_HOSTED_FALLBACK_WINDOWS == '' }}
         env:
           DESKTOP_PUBLISH_RUNNERS: ${{ vars.DESKTOP_PUBLISH_RUNNERS }}
         run: node --import tsx apps/desktop/scripts/retain-desktop-ci.ts --check-runner
@@ -215,23 +195,11 @@ jobs:
           exit $LASTEXITCODE
       - name: Retain complete package outside the checkout
         id: retained
-        if: ${{ vars.DSH_CI_HOSTED_FALLBACK_WINDOWS == '' }}
         env:
           DESKTOP_PUBLISH_RUNNERS: ${{ vars.DESKTOP_PUBLISH_RUNNERS }}
           PACKAGE_SOURCE_SHA: ${{ steps.checkout.outputs.commit }}
           PACKAGE_VERSION: ${{ steps.settings.outputs.version }}
         run: node --import tsx apps/desktop/scripts/retain-desktop-ci.ts
-      - name: Upload installer from hosted runner
-        # The machine route stores the package outside the checkout and hands it
-        # to the archiver job; a hosted runner has no such store, so the build
-        # directory goes straight to the run artifacts instead.
-        if: ${{ vars.DSH_CI_HOSTED_FALLBACK_WINDOWS != '' }}
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: windows-x64-${{ inputs.signing }}-hosted-${{ github.run_id }}-${{ github.run_attempt }}
-          path: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*
-          if-no-files-found: error
-          retention-days: 14
       - name: Retain packaging diagnostics
         continue-on-error: true
         if: always() && steps.checkout.outcome == 'success'
@@ -244,7 +212,6 @@ jobs:
           retention-days: 14
 
   upload-artifact:
-    if: ${{ vars.DSH_CI_HOSTED_FALLBACK_WINDOWS == '' }}
     defaults:
       run:
         shell: pwsh
