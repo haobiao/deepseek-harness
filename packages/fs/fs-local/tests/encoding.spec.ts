@@ -95,6 +95,24 @@ describe('detectEncoding', () => {
     expect(wholeCharsetLength(new Uint8Array([0x81, 0x30, 0x20, 0x30]), 'gb18030')).toBe(0)
   })
 
+  it('stops at a four-byte lead whose fourth byte is not a digit', () => {
+    expect(wholeCharsetLength(new Uint8Array([0x81, 0x30, 0x81, 0x40]), 'gb18030')).toBe(0)
+  })
+
+  it('counts a whole four-byte sequence before a two-byte one', () => {
+    const sample = gb18030('𠀀中')
+    expect(wholeCharsetLength(sample, 'gb18030')).toBe(sample.length)
+  })
+
+  it('treats a sample holding no whole character as lossy', () => {
+    const sample = gb18030('𠀀').subarray(0, 3)
+    expect(detectEncoding(sample, { fragment: true })).toEqual({ encoding: 'lossy-utf8', wholeLength: 3 })
+  })
+
+  it('trims a four-byte lead the sample cut in half', () => {
+    expect(trimPartialUtf8(utf8('😀').subarray(0, 2))).toHaveLength(0)
+  })
+
   it('measures a whole sample of ASCII and of two-byte sequences', () => {
     expect(wholeCharsetLength(utf8('abc'), 'gb18030')).toBe(3)
     expect(wholeCharsetLength(gbk('中文'), 'gbk')).toBe(4)
@@ -189,6 +207,12 @@ describe('createStreamDecoder', () => {
 
   it('refuses to stream a lossy sample', () => {
     expect(() => createStreamDecoder('lossy-utf8')).toThrow(UndecodableTextError)
+  })
+
+  it('rejects a truncated UTF-8 tail when the stream ends', () => {
+    const decoder = createStreamDecoder('utf8')
+    expect(decoder.push(new Uint8Array([0xe4, 0xb8]))).toBe('')
+    expect(() => decoder.end()).toThrow(UndecodableTextError)
   })
 })
 

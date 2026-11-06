@@ -21,6 +21,7 @@ const utf8Probe = new TextDecoder('utf-8', { fatal: true })
  */
 function byteAt(data: Uint8Array, index: number): number {
   if (index >= data.length) return -1
+  /* v8 ignore next -- the guard above proves the element exists; only `noUncheckedIndexedAccess` types the read as optional. */
   return data[index] ?? -1
 }
 

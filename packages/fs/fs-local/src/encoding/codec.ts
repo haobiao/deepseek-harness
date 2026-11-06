@@ -88,7 +88,9 @@ function encodeLegacy(text: string, encoding: LegacyCharset): Buffer {
   let offset = 0
   while (offset < text.length && text.charCodeAt(offset) === restored.charCodeAt(offset)) offset += 1
   const at = Math.min(offset, Math.max(0, text.length - 1))
-  throw new UnencodableTextError(encoding, String.fromCodePoint(text.codePointAt(at) ?? 0), at)
+  /* v8 ignore next -- `at` indexes a character that exists; only `noUncheckedIndexedAccess` types the read as optional. */
+  const codePoint = text.codePointAt(at) ?? 0
+  throw new UnencodableTextError(encoding, String.fromCodePoint(codePoint), at)
 }
 
 /** One incrementally-fed decoder: `push` per byte chunk, `end` once at EOF. */

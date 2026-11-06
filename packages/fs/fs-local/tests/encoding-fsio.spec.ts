@@ -69,6 +69,18 @@ describe('readWholeText', () => {
       .rejects.toMatchObject({ code: 'FS_NOT_TEXT' })
   })
 
+  it('still recognises a BOM when legacy detection is off', async () => {
+    const path = join(dir, 'bom.txt')
+    await writeFile(path, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('中文', 'utf8')]))
+    expect(await readWholeText(localTarget(path), undefined, STRICT_UTF8)).toBe('中文')
+  })
+
+  it('decides over the whole file when the sample bound is zero', async () => {
+    const path = join(dir, 'gbk.txt')
+    await writeFile(path, gbk('中文'))
+    expect(await readWholeText(localTarget(path), undefined, { detectLegacy: true, sampleBytes: 0 })).toBe('中文')
+  })
+
   it('retries detection over the whole file when the head sample is ASCII', async () => {
     const path = join(dir, 'late-gbk.txt')
     await writeFile(path, Buffer.concat([Buffer.from('a'.repeat(64), 'ascii'), Buffer.from(gbk('中文'))]))
@@ -112,6 +124,29 @@ describe('streamWholeText', () => {
     await writeFile(path, gbk('中文'))
     await expect(collect(streamWholeText(localTarget(path), undefined, STRICT_UTF8)))
       .rejects.toMatchObject({ code: 'FS_NOT_TEXT' })
+  })
+
+  it('refuses a file no charset restores instead of streaming replacement text', async () => {
+    const path = join(dir, 'broken.txt')
+    await writeFile(path, Buffer.alloc(200, 0xff))
+    const options: TextEncodingOptions = { detectLegacy: true, sampleBytes: 8 }
+    await expect(collect(streamWholeText(localTarget(path), undefined, options)))
+      .rejects.toMatchObject({ code: 'FS_NOT_TEXT' })
+  })
+
+  it('flushes a trailing partial character a file ends on', async () => {
+    const path = join(dir, 'cut.txt')
+    await writeFile(path, Buffer.concat([Buffer.from(gbk('中文')), Buffer.from([0xd6])]))
+    const options: TextEncodingOptions = { detectLegacy: true, sampleBytes: 4 }
+    expect(await collect(streamWholeText(localTarget(path), undefined, options))).toBe('中文\uFFFD')
+  })
+
+  it('carries a lead byte across a read-chunk boundary into the stream end', async () => {
+    const path = join(dir, 'long.txt')
+    const body = 'a'.repeat(65532)
+    await writeFile(path, Buffer.concat([Buffer.from(gbk('中文')), Buffer.from(body, 'ascii'), Buffer.from([0xd6])]))
+    const options: TextEncodingOptions = { detectLegacy: true, sampleBytes: 16 }
+    expect(await collect(streamWholeText(localTarget(path), undefined, options))).toBe(`中文${body}\uFFFD`)
   })
 })
 
@@ -174,6 +209,12 @@ describe('readFileEncoding', () => {
 
   it('falls back to UTF-8 when the file cannot be sampled', async () => {
     expect(await readFileEncoding(join(dir, 'missing.txt'))).toBe('utf8')
+  })
+
+  it('reports UTF-8 for an empty file without reading it', async () => {
+    const path = join(dir, 'empty.txt')
+    await writeFile(path, Buffer.alloc(0))
+    expect(await readFileEncoding(path)).toBe('utf8')
   })
 })
 

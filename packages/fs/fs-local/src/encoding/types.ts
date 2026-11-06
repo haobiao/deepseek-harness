@@ -72,5 +72,6 @@ export class UndecodableTextError extends Error {
 
 /** `U+XXXX` for the first code point of `rune`, for a diagnostic the model can act on. */
 function formatCodePoint(rune: string): string {
+  /* v8 ignore next -- every caller passes one whole character; only `noUncheckedIndexedAccess` types the read as optional. */
   return `U+${(rune.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}`
 }
