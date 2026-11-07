@@ -239,7 +239,12 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: windows-x64-${{ inputs.signing }}-hosted-${{ github.run_id }}-${{ github.run_attempt }}
-          path: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*
+          # The NSIS installer already contains everything win-unpacked holds;
+          # uploading that intermediate tree again doubles the artifact.
+          path: |
+            apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+            apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe.blockmap
+            apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/builder-debug.yml
           if-no-files-found: error
           retention-days: 14
 

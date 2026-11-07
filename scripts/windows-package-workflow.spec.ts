@@ -136,10 +136,15 @@ it('keeps the hosted packaging route behind an explicit runner opt-in', () => {
   expect(workflow.jobs['upload-artifact']!.if).toBe(machine)
   const upload = job.steps.find(step => step.name === 'Upload installer from hosted runner')!
   expect(upload.if).toBe(hosted)
-  expect(upload.with).toMatchObject({
-    path: 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*',
-    'if-no-files-found': 'error',
-  })
+  expect(upload.with).toMatchObject({ 'if-no-files-found': 'error' })
+  // The installer already contains win-unpacked; only the distributable files ship.
+  const uploadPath = String(upload.with?.path)
+  expect(uploadPath.trimEnd().split(/\r?\n/u)).toEqual([
+    'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe',
+    'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe.blockmap',
+    'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/builder-debug.yml',
+  ])
+  expect(uploadPath).not.toContain('win-unpacked')
 })
 
 it('normalizes priority in the dependency and packaging shells before launching their children', () => {
