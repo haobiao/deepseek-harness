@@ -15,6 +15,11 @@ jobs:
   policy:
     name: Issue policy
     runs-on: ubuntu-latest
+    env:
+      # The trusted policy lives on the default branch, so it must read the
+      # repository that raised the event instead of the upstream coordinates
+      # baked into config.json. A fork can then validate its own PRs.
+      DSH_ISSUE_POLICY_REPOSITORY: ${{ github.repository }}
     steps:
       - name: Check out trusted policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

@@ -6,6 +6,21 @@ import config from './config.json' with { type: 'json' }
 
 const API_VERSION = '2026-03-10'
 
+const configuredRepository = `/repos/${config.organization}/${config.repository}`
+
+/**
+ * Point REST reads at the repository the workflow actually runs in. A fork
+ * injects its own slug; the upstream workflow injects the configured slug, so
+ * its requests stay byte-identical.
+ * @param {string} path API path including any query string.
+ * @returns {string} The path with the active repository substituted.
+ */
+function repositoryPath(path) {
+  const active = process.env.DSH_ISSUE_POLICY_REPOSITORY
+  if (!active || !path.startsWith(configuredRepository)) return path
+  return `/repos/${active}${path.slice(configuredRepository.length)}`
+}
+
 function token() {
   const value = process.env.GH_TOKEN || process.env.GITHUB_TOKEN
   if (!value) throw new Error('GH_TOKEN 或 GITHUB_TOKEN 未设置')
@@ -24,7 +39,8 @@ function projectToken() {
  */
 export async function api(path, options = {}) {
   const { allow404 = false, ...requestOptions } = options
-  const response = await fetch(`${process.env.GITHUB_API_URL ?? 'https://api.github.com'}${path}`, {
+  const requestPath = repositoryPath(path)
+  const response = await fetch(`${process.env.GITHUB_API_URL ?? 'https://api.github.com'}${requestPath}`, {
     ...requestOptions,
     headers: {
       Accept: 'application/vnd.github+json',
@@ -37,7 +53,7 @@ export async function api(path, options = {}) {
   if (allow404 && response.status === 404) return null
   if (!response.ok) {
     const body = await response.text()
-    throw new Error(`${requestOptions.method ?? 'GET'} ${path}: ${response.status} ${body}`)
+    throw new Error(`${requestOptions.method ?? 'GET'} ${requestPath}: ${response.status} ${body}`)
   }
   if (response.status === 204) return null
   return response.json()
