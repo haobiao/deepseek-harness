@@ -221,6 +221,16 @@ jobs:
           PACKAGE_SOURCE_SHA: ${{ steps.checkout.outputs.commit }}
           PACKAGE_VERSION: ${{ steps.settings.outputs.version }}
         run: node --import tsx apps/desktop/scripts/retain-desktop-ci.ts
+      - name: Retain packaging diagnostics
+        continue-on-error: true
+        if: always() && steps.checkout.outcome == 'success'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: windows-package-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: ${{ github.workspace }}/apps/desktop/.desktop-build/packaging-runs/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload installer from hosted runner
         # The machine route stores the package outside the checkout and hands it
         # to the archiver job; a hosted runner has no such store, so the build
@@ -231,16 +241,6 @@ jobs:
           name: windows-x64-${{ inputs.signing }}-hosted-${{ github.run_id }}-${{ github.run_attempt }}
           path: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*
           if-no-files-found: error
-          retention-days: 14
-      - name: Retain packaging diagnostics
-        continue-on-error: true
-        if: always() && steps.checkout.outcome == 'success'
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: windows-package-logs-${{ github.run_id }}-${{ github.run_attempt }}
-          include-hidden-files: true
-          path: ${{ github.workspace }}/apps/desktop/.desktop-build/packaging-runs/
-          if-no-files-found: warn
           retention-days: 14
 
   upload-artifact:

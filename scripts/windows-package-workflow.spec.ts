@@ -13,6 +13,7 @@ const workflow = yaml.load(readFileSync(resolve(root, '.github/workflows/windows
   concurrency: { group: string; 'cancel-in-progress': boolean }
   jobs: Record<string, {
     defaults?: { run: { shell: string } }
+    if?: string
     'runs-on': string | string[]
     env: Record<string, string>
     steps: Array<{
@@ -64,7 +65,7 @@ it('routes manual packaging to the dedicated runner with explicit preset and sig
   expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch'])
   expect(workflow.on.workflow_dispatch).toMatchObject({ inputs: { version_mode: { default: 'default', options: ['default', 'follow-dsh', 'build-number', 'manual'] } } })
   expect(workflow.jobs.package).not.toHaveProperty('name')
-  expect(job['runs-on']).toBe('dsh-win-package-trial')
+  expect(job['runs-on']).toBe("${{ vars.DSH_PACKAGE_HOSTED_RUNNER || 'dsh-win-package-trial' }}")
   expect(JSON.stringify(job.env)).not.toContain('runner.')
   expect(job.steps.find(step => step.name === 'Configure persistent pnpm store')?.env?.DSH_DESKTOP_PACKAGE_CACHE_DIR)
     .toBe('${{ runner.tool_cache }}/dsh-desktop-package-cache')
@@ -108,16 +109,37 @@ it('validates before building and passes the same mode and version to checks and
 
 it('retains failure diagnostics and uploads only the selected successful installer', () => {
   const uploads = job.steps.filter(step => step.uses?.startsWith('actions/upload-artifact@'))
-  expect(uploads).toHaveLength(1)
+  expect(uploads).toHaveLength(2)
   const archive = workflow.jobs['upload-artifact']!
   const archival = expectDesktopArchive(archive, 1)
-  expect(uploads[0]!.if).toBe("always() && steps.checkout.outcome == 'success'")
-  expect(uploads[0]!.with).toMatchObject({
+  const diagnostics = uploads.find(step => step.name === 'Retain packaging diagnostics')!
+  expect(diagnostics.if).toBe("always() && steps.checkout.outcome == 'success'")
+  expect(diagnostics.with).toMatchObject({
     path: '${{ github.workspace }}/apps/desktop/.desktop-build/packaging-runs/',
     'include-hidden-files': true,
   })
   expect(archive.env.DESKTOP_ARCHIVE_NAME).toBe('windows-x64-${{ inputs.signing }}-${{ needs.package.outputs.version }}-${{ github.run_id }}-${{ needs.package.outputs.attempt }}.zip')
   expect(archival[0]!.with).toMatchObject({ path: '${{ steps.archive.outputs.path }}', 'if-no-files-found': 'error', archive: false, overwrite: true, name: '${{ env.DESKTOP_ARCHIVE_NAME }}' })
+})
+
+it('keeps the hosted packaging route behind an explicit runner opt-in', () => {
+  const hosted = "${{ vars.DSH_PACKAGE_HOSTED_RUNNER != '' }}"
+  const machine = "${{ vars.DSH_PACKAGE_HOSTED_RUNNER == '' }}"
+  expect(job['runs-on']).toBe("${{ vars.DSH_PACKAGE_HOSTED_RUNNER || 'dsh-win-package-trial' }}")
+  const preset = job.steps.find(step => step.name === 'Create hosted packaging preset')!
+  expect(preset.if).toBe(hosted)
+  expect(preset.run).toContain("presets/test.env")
+  expect(preset.run).toContain('DSH_PACKAGING_CONFIG_DIR')
+  expect(preset.run).not.toContain('${{ inputs.')
+  expect(job.steps.find(step => step.name === 'Check original machine archival route')!.if).toBe(machine)
+  expect(job.steps.find(step => step.name === 'Retain complete package outside the checkout')!.if).toBe(machine)
+  expect(workflow.jobs['upload-artifact']!.if).toBe(machine)
+  const upload = job.steps.find(step => step.name === 'Upload installer from hosted runner')!
+  expect(upload.if).toBe(hosted)
+  expect(upload.with).toMatchObject({
+    path: 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*',
+    'if-no-files-found': 'error',
+  })
 })
 
 it('normalizes priority in the dependency and packaging shells before launching their children', () => {
