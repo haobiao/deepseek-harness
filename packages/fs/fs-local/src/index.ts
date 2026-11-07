@@ -28,12 +28,14 @@ import type {
 } from '@deepseek-ai/dsh-fs'
 import {
   applyLiteralEdit,
+  DEFAULT_TEXT_ENCODING,
   expandHomePrefix,
   listDirectory,
   localDisplayPath,
   normalizeLineEndings,
   probe,
   probeNoFollow,
+  readFileEncoding,
   readForEdit,
   readByteWindow,
   readTextForDiff,
@@ -45,7 +47,7 @@ import {
   streamWholeText,
   writeFileAtomic,
 } from './fsio.ts'
-import type { FsIoInternals, PathInfo } from './fsio.ts'
+import type { FsIoInternals, PathInfo, TextEncodingOptions } from './fsio.ts'
 
 /** Configuration for the local filesystem backend. */
 export interface Config {
@@ -56,10 +58,19 @@ export interface Config {
    * runtime's safe allocation/decode maximum. Defaults to 10 MiB.
    */
   diffBasisMaxBytes?: number
+  /**
+   * Detect and preserve legacy text encodings (GB18030/GBK). Off restores strict
+   * UTF-8, where a non-UTF-8 file is refused instead of read. Defaults to true.
+   */
+  legacyEncodings?: boolean
+  /** Bytes sampled to decide a file's encoding. Defaults to 256 KiB. */
+  encodingSampleBytes?: number
 }
 
 type ResolvedConfig = Required<Config>
 const DEFAULT_DIFF_BASIS_MAX_BYTES = 10 * 1024 * 1024
+/** Largest detection sample: a decision costing more than this is not worth its precision. */
+const MAX_ENCODING_SAMPLE_BYTES = 16 * 1024 * 1024
 const MAX_DIFF_BASIS_BYTES = Math.min(
   bufferConstants.MAX_LENGTH,
   bufferConstants.MAX_STRING_LENGTH,
@@ -98,10 +109,14 @@ export class LocalFileSystem extends FileSystem {
   static Config: z<Config> = z.object({
     cwd: z.string().default(process.cwd()),
     diffBasisMaxBytes: z.number().default(DEFAULT_DIFF_BASIS_MAX_BYTES),
+    legacyEncodings: z.boolean().default(true),
+    encodingSampleBytes: z.number().default(DEFAULT_TEXT_ENCODING.sampleBytes),
   })
 
   /** Validated config (schemastery applied the defaults before construction). */
   readonly config: ResolvedConfig
+  /** Encoding policy handed to every fsio text read and write. */
+  private readonly encodingOptions: TextEncodingOptions
   /** Test hook forwarded to fsio for atomic-publication boundaries. */
   internals: FsIoInternals = {}
   /** Per-targetKey tail promise: serializes mutating ops so the read→guard→write
@@ -117,7 +132,16 @@ export class LocalFileSystem extends FileSystem {
       || resolved.diffBasisMaxBytes > MAX_DIFF_BASIS_BYTES) {
       throw new Error(`fs-local: diffBasisMaxBytes must be a positive safe integer no greater than ${MAX_DIFF_BASIS_BYTES}`)
     }
+    if (!Number.isSafeInteger(resolved.encodingSampleBytes)
+      || resolved.encodingSampleBytes <= 0
+      || resolved.encodingSampleBytes > MAX_ENCODING_SAMPLE_BYTES) {
+      throw new Error(`fs-local: encodingSampleBytes must be a positive safe integer no greater than ${MAX_ENCODING_SAMPLE_BYTES}`)
+    }
     this.config = resolved
+    this.encodingOptions = {
+      detectLegacy: resolved.legacyEncodings,
+      sampleBytes: resolved.encodingSampleBytes,
+    }
   }
 
   /** Run one mutation under the same lock ordering as multi-target operations. */
@@ -187,11 +211,11 @@ export class LocalFileSystem extends FileSystem {
   }
 
   override async readText(target: FsTarget, signal?: AbortSignal): Promise<string> {
-    return readWholeText({ displayPath: target.displayPath, targetKey: target.targetKey }, signal)
+    return readWholeText({ displayPath: target.displayPath, targetKey: target.targetKey }, signal, this.encodingOptions)
   }
 
   override streamText(target: FsTarget, signal?: AbortSignal): Promise<AsyncIterable<string>> {
-    return Promise.resolve(streamWholeText({ displayPath: target.displayPath, targetKey: target.targetKey }, signal))
+    return Promise.resolve(streamWholeText({ displayPath: target.displayPath, targetKey: target.targetKey }, signal, this.encodingOptions))
   }
 
   override async readBytes(target: FsTarget, signal: AbortSignal | undefined, maxBytes: number): Promise<Uint8Array> {
@@ -221,6 +245,12 @@ export class LocalFileSystem extends FileSystem {
   ): Promise<FsWriteOutcome> {
     return this.withLock(target.targetKey, async () => {
       const existing = await this.writeTarget(target, expected)
+      // A replacement keeps the file's own encoding. Transcoding a GBK file to
+      // UTF-8 on every overwrite would rewrite bytes the caller never touched,
+      // and a legacy file would stop being readable by the tools that wrote it.
+      const encoding = existing === null
+        ? undefined
+        : await readFileEncoding(target.targetKey, this.encodingOptions, signal)
 
       // Capture an optional contextual-diff basis before the write. The bounded
       // reader checks the opened file itself, so an external replacement after
@@ -230,10 +260,13 @@ export class LocalFileSystem extends FileSystem {
       const diffable = existing !== null
         && Buffer.byteLength(content, 'utf8') < this.config.diffBasisMaxBytes
       const before = diffable
-        ? await readTextForDiff(target.targetKey, this.config.diffBasisMaxBytes, signal)
+        ? await readTextForDiff(target.targetKey, this.config.diffBasisMaxBytes, signal, this.encodingOptions)
         : null
-      await writeFileAtomic(target.targetKey, content, existing?.mode, signal, this.internals,
-        { displayPath: target.displayPath, createIfAbsent: expected?.kind === 'createIfAbsent' })
+      await writeFileAtomic(target.targetKey, content, existing?.mode, signal, this.internals, {
+        displayPath: target.displayPath,
+        createIfAbsent: expected?.kind === 'createIfAbsent',
+        ...encoding === undefined ? {} : { encoding },
+      })
       const after = await probe(target.targetKey)
       return {
         operation: existing ? 'update' : 'create',
@@ -267,10 +300,11 @@ export class LocalFileSystem extends FileSystem {
         throw new FsError(`cannot edit "${target.displayPath}": file changed since it was read`, 'FS_STALE_VERSION')
       }
 
-      const original = await readForEdit(target.targetKey, target.displayPath, signal)
+      const original = await readForEdit(target.targetKey, target.displayPath, signal, this.encodingOptions)
       const edited = applyLiteralEdit(original.content, edit.oldString, edit.newString, edit.replaceAll, target.displayPath)
       const content = restoreLineEndings(edited.content, original.lineEndings)
-      await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals, { displayPath: target.displayPath })
+      await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals,
+        { displayPath: target.displayPath, encoding: original.encoding })
 
       const after = await probe(target.targetKey)
       return {
@@ -288,10 +322,10 @@ export class LocalFileSystem extends FileSystem {
   ): Promise<FsEditOutcome> {
     return this.withLock(target.targetKey, async () => {
       const existing = await this.requireFile(target, expected, 'patch')
-      const original = await readForEdit(target.targetKey, target.displayPath, signal)
+      const original = await readForEdit(target.targetKey, target.displayPath, signal, this.encodingOptions)
       const after = this.patchContent(target, original.content, hunks)
       await writeFileAtomic(target.targetKey, restoreLineEndings(after, original.lineEndings), existing.mode, signal, this.internals,
-        { displayPath: target.displayPath })
+        { displayPath: target.displayPath, encoding: original.encoding })
       return { version: this.versionAfterWrite(await probe(target.targetKey), target), before: original.content, after }
     })
   }
@@ -299,7 +333,7 @@ export class LocalFileSystem extends FileSystem {
   override async deleteFile(target: FsTarget, expected?: { version: FsVersion }, signal?: AbortSignal): Promise<FsDeleteOutcome> {
     return this.withLock(target.targetKey, async () => {
       await this.requireFile(target, expected, 'delete')
-      const before = await readTextForDiff(target.targetKey, this.config.diffBasisMaxBytes, signal)
+      const before = await readTextForDiff(target.targetKey, this.config.diffBasisMaxBytes, signal, this.encodingOptions)
       await this.internals.inspectBeforeMutation?.(target)
       if (signal?.aborted) throw new FsError('delete aborted', 'FS_ABORTED')
       await removeFile(target.targetKey, target.displayPath, this.internals)
@@ -316,11 +350,11 @@ export class LocalFileSystem extends FileSystem {
     return this.withLocks([source.targetKey, destination.targetKey], async () => {
       const sourceInfo = await this.requireFile(source, options.expectedSource, 'move')
       const existing = await this.writeTarget(destination, options.expectedDestination)
-      const original = await readForEdit(source.targetKey, source.displayPath, signal)
+      const original = await readForEdit(source.targetKey, source.displayPath, signal, this.encodingOptions)
       const after = options.hunks === undefined ? original.content : this.patchContent(source, original.content, options.hunks)
       const content = restoreLineEndings(after, original.lineEndings)
       const before = existing && Buffer.byteLength(content, 'utf8') < this.config.diffBasisMaxBytes
-        ? await readTextForDiff(destination.targetKey, this.config.diffBasisMaxBytes, signal) : null
+        ? await readTextForDiff(destination.targetKey, this.config.diffBasisMaxBytes, signal, this.encodingOptions) : null
       await this.internals.inspectBeforeMutation?.(source)
       if (signal?.aborted) throw new FsError('move aborted', 'FS_ABORTED')
       // After this checkpoint, complete both effects and report them even if cancellation arrives.
@@ -328,6 +362,8 @@ export class LocalFileSystem extends FileSystem {
         displayPath: destination.displayPath,
         createIfAbsent: options.expectedDestination?.kind === 'createIfAbsent',
         existingDestination: existing !== null,
+        // The destination receives the source's content, so it takes its encoding.
+        encoding: original.encoding,
       })
       const outcome: FsWriteOutcome = {
         operation: existing ? 'update' : 'create',

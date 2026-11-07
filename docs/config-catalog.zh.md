@@ -1558,7 +1558,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-fs-local`
 
-- `source`: [`packages/fs/fs-local/src/index.ts:51`](../packages/fs/fs-local/src/index.ts)
+- `source`: [`packages/fs/fs-local/src/index.ts:53`](../packages/fs/fs-local/src/index.ts)
 
 ```ts config-catalog
 /** Configuration for the local filesystem backend. */
@@ -1570,6 +1570,13 @@ export interface Config {
    * runtime's safe allocation/decode maximum. Defaults to 10 MiB.
    */
   diffBasisMaxBytes?: number
+  /**
+   * Detect and preserve legacy text encodings (GB18030/GBK). Off restores strict
+   * UTF-8, where a non-UTF-8 file is refused instead of read. Defaults to true.
+   */
+  legacyEncodings?: boolean
+  /** Bytes sampled to decide a file's encoding. Defaults to 256 KiB. */
+  encodingSampleBytes?: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-fs-local -->

@@ -1,6 +1,7 @@
 /**
  * Unit tests for model-facing guarded-mutation diagnostics: normalized unread
- * failures, the stale-version remedy, code preservation, and passthrough.
+ * failures, the stale-version and encoding remedies, code preservation, and
+ * passthrough.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -29,6 +30,17 @@ describe('remediateFsError', () => {
     ])
     expect(remedied.map(error => error.code)).toEqual(['FS_NOT_OBSERVED', 'FS_NOT_OBSERVED'])
     expect(remedied.map(error => error.cause)).toEqual(sources)
+  })
+
+  it('appends the encoding remedy to FS_NOT_ENCODABLE, keeping the character the reason', () => {
+    const original = new FsError(
+      'cannot write "x": "😀" (U+1F600) at character offset 2 cannot be represented in GBK, the file\'s encoding',
+      'FS_NOT_ENCODABLE',
+    )
+    const remedied = remediateFsError(original, 'x')
+    expect(remedied.code).toBe('FS_NOT_ENCODABLE')
+    expect(remedied.cause).toBe(original)
+    expect(remedied.message).toBe(`${original.message} — this file is not UTF-8; write the text to a new file, or convert the file's encoding first`)
   })
 
   it('leaves other FsError codes untouched', () => {

@@ -11,12 +11,13 @@ import { FsError } from '@deepseek-ai/dsh-fs'
  * Render the stable model-facing diagnostic for a guarded-mutation failure.
  * `FS_STALE_VERSION` keeps the provider's reason and appends its re-read
  * remedy. `FS_NOT_OBSERVED` replaces operation-specific policy/provider text
- * with one path-aware reason and read remedy. The original error remains the
- * cause, and both diagnostics preserve its code for machine routing. Anything
- * else passes through untouched.
+ * with one path-aware reason and read remedy. `FS_NOT_ENCODABLE` keeps the
+ * provider's character-level reason and appends the remedy that keeps the file's
+ * bytes intact. The original error remains the cause, and every diagnostic
+ * preserves its code for machine routing. Anything else passes through untouched.
  * @param error - the caught value from a write/edit execution.
  * @param displayPath - the resolved target path shown to the model.
- * @returns a remediated `FsError` for the two guarded-mutation codes, else the original value.
+ * @returns a remediated `FsError` for the guarded-mutation codes, else the original value.
  */
 export function remediateFsError(error: FsError, displayPath: string): FsError
 /**
@@ -37,6 +38,15 @@ export function remediateFsError(error: unknown, displayPath: string): unknown {
   }
   if (error.code === 'FS_STALE_VERSION') {
     return new FsError(`${error.message} — re-read the file, then retry`, error.code, { cause: error })
+  }
+  if (error.code === 'FS_NOT_ENCODABLE') {
+    // Rewriting the file as UTF-8 would be silent corruption of a legacy file, so
+    // the remedy names the two routes that keep it intact.
+    return new FsError(
+      `${error.message} — this file is not UTF-8; write the text to a new file, or convert the file's encoding first`,
+      error.code,
+      { cause: error },
+    )
   }
   return error
 }
