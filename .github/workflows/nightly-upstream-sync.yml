@@ -131,13 +131,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
-      GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
       PACKAGE_PRESET: ${{ inputs.preset || 'test' }}
       PACKAGE_SIGNING: ${{ inputs.signing || 'unsigned' }}
       PACKAGE_CHANNEL: ${{ inputs.update_channel || 'nightly' }}
       PACKAGE_COMPRESSION: ${{ inputs.compression_level || '7' }}
     steps:
       - name: Dispatch Windows packaging
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
           set -euo pipefail
           gh workflow run windows-package.yml \
@@ -150,12 +151,22 @@ jobs:
             -f signing="$PACKAGE_SIGNING"
 
       - name: Wait for packaging result
+        env:
+          # Default token on purpose: this step only reads run status, and it
+          # must not turn a successful build into a red run if SYNC_TOKEN is
+          # revoked mid-flight.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           sleep 15
           run_id=$(gh run list --repo "$GITHUB_REPOSITORY" \
             --workflow windows-package.yml --event workflow_dispatch \
-            --limit 1 --json databaseId --jq '.[0].databaseId')
+            --limit 10 --json databaseId,headSha \
+            --jq "map(select(.headSha == \"$GITHUB_SHA\"))[0].databaseId // empty")
+          if [ -z "$run_id" ]; then
+            echo "::error::未找到 $GITHUB_SHA 对应的打包运行"
+            exit 1
+          fi
           echo "packaging run: $run_id"
           gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
 
@@ -166,7 +177,9 @@ jobs:
     steps:
       - name: Report failure as an issue
         env:
-          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          # Default token: reporting must work even when the failure is a bad
+          # or revoked SYNC_TOKEN.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           title="Nightly upstream sync failed"
