@@ -1036,8 +1036,9 @@ export async function readTextForDiff(
 
 /**
  * Apply a literal replacement to LF-normalized content. An exact match wins; failing that,
- * a tolerant pass (trailing whitespace, tab width, uniform indentation, blank-line runs,
- * typographic punctuation) may match, and the result reports which pass was used. Empty or
+ * a tolerant pass (trailing whitespace, tab width, uniform or per-line indentation,
+ * blank-line runs, typographic punctuation) may match, and the result reports which pass
+ * was used. Empty or
  * missing search text throws `FS_EDIT_NOT_FOUND` with the nearest differing line; multiple
  * matches throw `FS_AMBIGUOUS_EDIT` unless `replaceAll` is true.
  * @param content - the current file content, already LF-normalized.

@@ -60,6 +60,7 @@ const MATCH_NOTES: Record<FsEditMatchStrategy, string> = {
   'trailing-whitespace': 'ignoring trailing whitespace',
   'expanded-tabs': 'normalizing tab width',
   'relative-indent': 'ignoring a uniform indentation difference',
+  'per-line-indent': 'ignoring per-line indentation differences',
   'blank-line-runs': 'tolerating a different number of blank lines',
   punctuation: 'normalizing typographic punctuation',
 }
@@ -105,7 +106,7 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
       },
       old_string: {
         type: 'string', required: true,
-        description: 'Literal text to replace. Prefer an exact quote; trailing whitespace, tab width, a uniform indentation difference, '
+        description: 'Literal text to replace. Prefer an exact quote; trailing whitespace, tab width, uniform or per-line indentation differences, '
           + 'blank-line runs, and typographic punctuation are tolerated, and the result states when a tolerant match was used.',
       },
       new_string: { type: 'string', required: true, description: 'Literal replacement text. Use an empty string to delete the match.' },

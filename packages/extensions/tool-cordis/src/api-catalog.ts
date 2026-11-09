@@ -6569,7 +6569,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'FsEditMatchStrategy',
-    declaration: 'export type FsEditMatchStrategy = \'trailing-whitespace\' | \'expanded-tabs\' | \'relative-indent\' | \'blank-line-runs\' | \'punctuation\';',
+    declaration: 'export type FsEditMatchStrategy = \'trailing-whitespace\' | \'expanded-tabs\' | \'relative-indent\' | \'per-line-indent\' | \'blank-line-runs\' | \'punctuation\';',
   },
   {
     name: 'FsEditOutcome',

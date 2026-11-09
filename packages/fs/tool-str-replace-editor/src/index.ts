@@ -27,7 +27,7 @@ Custom editing tool for viewing, creating and editing files
 * A null placeholder for a parameter unused by the selected command is treated as omitted. Required parameters still need values; omit \`str_replace.new_str\` rather than setting it to null when deleting a match
 
 Notes for using the \`str_replace\` command:
-* The \`old_str\` parameter should match one or more consecutive lines from the original file, preferably exactly. Matching tolerates trailing whitespace, tab width, a uniform indentation difference, differing blank-line runs, and typographic punctuation; the result states when it did.
+* The \`old_str\` parameter should match one or more consecutive lines from the original file, preferably exactly. Matching tolerates trailing whitespace, tab width, uniform or per-line indentation differences, differing blank-line runs, and typographic punctuation; the result states when it did.
 * If the \`old_str\` parameter is not unique in the file, the replacement will not be performed. Make sure to include enough context in \`old_str\` to make it unique
 * The \`new_str\` parameter should contain the edited lines that should replace the \`old_str\`
 `.trim()
@@ -46,6 +46,7 @@ const MATCH_NOTES: Record<FsEditMatchStrategy, string> = {
   'trailing-whitespace': 'ignoring trailing whitespace',
   'expanded-tabs': 'normalizing tab width',
   'relative-indent': 'ignoring a uniform indentation difference',
+  'per-line-indent': 'ignoring per-line indentation differences',
   'blank-line-runs': 'tolerating a different number of blank lines',
   punctuation: 'normalizing typographic punctuation',
 }

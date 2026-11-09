@@ -152,6 +152,7 @@ export type FsEditMatchStrategy =
   | 'trailing-whitespace'
   | 'expanded-tabs'
   | 'relative-indent'
+  | 'per-line-indent'
   | 'blank-line-runs'
   | 'punctuation'
 
@@ -160,7 +161,8 @@ export interface FsEditRequest {
   /**
    * Non-empty text to replace. An exact literal match is preferred; failing that a
    * backend may match through trailing whitespace, tab width, relative indentation,
-   * blank-line runs, or typographic punctuation, and report the pass it used.
+   * per-line indentation, blank-line runs, or typographic punctuation, and report
+   * the pass it used.
    */
   oldString: string
   /** Literal replacement text. An empty string deletes the matched text. */

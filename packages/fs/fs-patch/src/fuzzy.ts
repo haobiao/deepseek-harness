@@ -3,8 +3,9 @@
  *
  * The ladder is deliberately ordered from strict to permissive and stops at the
  * first strategy with a match, so an exact match never becomes ambiguous through
- * a later pass. Internal spaces are never collapsed, and leading indentation is
- * tolerated only as a uniform offset shared by every line of the search text.
+ * a later pass. Internal spaces are never collapsed. Leading indentation is first
+ * tolerated as a uniform offset shared by every line of the search text; only when
+ * every stricter pass fails may a pass ignore each line's indentation separately.
  */
 
 /** A matching pass in the tolerance ladder. */
@@ -13,6 +14,7 @@ export type LiteralMatchStrategy =
   | 'trailing-whitespace'
   | 'expanded-tabs'
   | 'relative-indent'
+  | 'per-line-indent'
   | 'blank-line-runs'
   | 'punctuation'
 
@@ -283,6 +285,43 @@ function relativeIndentOffsets(text: string, search: string): Array<{ start: num
   return results
 }
 
+/**
+ * Match when every line equals its counterpart after dropping that line's own
+ * leading whitespace. Unlike {@link relativeIndentOffsets}, the offset need not be
+ * shared, so a transcription that gained or lost spaces on only some lines still
+ * matches; internal whitespace and line count remain exact.
+ */
+function perLineIndentOffsets(text: string, search: string): Array<{ start: number; end: number }> | undefined {
+  const pattern = patternLines(search)
+  if (pattern.length < 2) return undefined
+  const spans = bodyLines(text)
+  if (pattern.length > spans.length) return undefined
+  const requiresNewline = search.endsWith('\n')
+  const expected = pattern.map(line => rstrip(stripLeading(line)))
+  const firstKey = expected[0] as string
+  const results: Array<{ start: number; end: number }> = []
+  for (let index = 0; index + pattern.length <= spans.length; index++) {
+    if (rstrip(stripLeading((spans[index] as LineSpan).text)) !== firstKey) continue
+    let matched = true
+    for (let offset = 1; offset < pattern.length; offset++) {
+      const span = spans[index + offset] as LineSpan
+      if (rstrip(stripLeading(span.text)) !== expected[offset]) {
+        matched = false
+        break
+      }
+    }
+    if (!matched) continue
+    const last = spans[index + pattern.length - 1] as LineSpan
+    let end = last.start + last.text.length
+    if (requiresNewline) {
+      if (text[end] !== '\n') continue
+      end += 1
+    }
+    results.push({ start: (spans[index] as LineSpan).start, end })
+  }
+  return results
+}
+
 interface CompressedSpan {
   text: string
   first: number
@@ -358,9 +397,10 @@ function substringMatches(source: MappedText, needle: string, strategy: LiteralM
  * Find occurrences of `search` in `content` at the first tolerance level with a match.
  *
  * Passes, in order: exact substring; trailing whitespace per line; tabs expanded to
- * four spaces; a uniform indentation offset on multi-line searches; differing runs of
- * blank lines; typographic punctuation. Internal spaces and nonuniform indentation
- * are never ignored.
+ * four spaces; a uniform indentation offset on multi-line searches; differing
+ * per-line indentation on multi-line searches; differing runs of blank lines;
+ * typographic punctuation. Internal spaces are never collapsed, and the per-line
+ * indentation pass is reached only after every stricter pass failed.
  * @param content - text to search, in any line-ending style.
  * @param search - non-empty literal text the caller wants to replace.
  * @returns every match at the successful pass, or an empty list with `strategy: 'exact'`.
@@ -395,6 +435,14 @@ export function findLiteralMatches(content: string, search: string): LiteralMatc
     return {
       matches: extendTrailingWhitespace(content, relative.map(range => ({ ...toMappedRange(source, range.start, range.end), strategy: 'relative-indent' as const }))),
       strategy: 'relative-indent',
+    }
+  }
+
+  const perLine = perLineIndentOffsets(source.text, needle)
+  if (perLine !== undefined && perLine.length > 0) {
+    return {
+      matches: extendTrailingWhitespace(content, perLine.map(range => ({ ...toMappedRange(source, range.start, range.end), strategy: 'per-line-indent' as const }))),
+      strategy: 'per-line-indent',
     }
   }
 

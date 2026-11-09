@@ -61,8 +61,63 @@ describe('findLiteralMatches', () => {
     expect(findLiteralMatches('a  b\n', 'a b').matches).toEqual([])
   })
 
-  it('never ignores a nonuniform indentation difference', () => {
-    expect(findLiteralMatches('  a\n    b\n', ' a\n  b').matches).toEqual([])
+  it('tolerates indentation differences that vary by line', () => {
+    const content = '  a\n    b\n'
+    const result = findLiteralMatches(content, ' a\n     b')
+    expect(result.strategy).toBe('per-line-indent')
+    expect(result.matches.map(match => [match.start, match.end])).toEqual([[0, 9]])
+    expect(replaceLiteralMatches(content, result.matches, 'done')).toBe('done\n')
+  })
+
+  it('only reaches the per-line pass after a uniform offset failed', () => {
+    const result = findLiteralMatches('  a\n  b\n', ' a\n b')
+    expect(result.strategy).toBe('relative-indent')
+  })
+
+  it('does not use the per-line pass for a single-line search', () => {
+    expect(findLiteralMatches(' only()\n', '    only()').matches).toEqual([])
+  })
+
+  it('matches a comment header transcribed with extra leading spaces on some lines', () => {
+    const content = [
+      '/*****************************************************************************',
+      '    Func Name: XMLCFG_SlaveToMaster',
+      ' Date Created: 2011/8/15',
+      '       Author: Michael Ran (R02617)',
+      '  Description: Transit the role of current process from backup process to',
+      '               main process.',
+      '        Input: VOID',
+      '       Output: None',
+      '       Return: VOID',
+      '      Caution:',
+      '------------------------------------------------------------------------------',
+      '  Modification History',
+      '  DATE        NAME             DESCRIPTION',
+      '  --------------------------------------------------------------------------',
+      '  YYYY-MM-DD',
+      '*****************************************************************************/',
+    ].join('\n') + '\n'
+    const search = [
+      '/*****************************************************************************',
+      '     Func Name: XMLCFG_SlaveToMaster',
+      ' Date Created: 2011/8/15',
+      '        Author: Michael Ran (R02617)',
+      '   Description: Transit the role of current process from backup process to',
+      '                main process.',
+      '         Input: VOID',
+      '        Output: None',
+      '        Return: VOID',
+      '       Caution:',
+      '------------------------------------------------------------------------------',
+      '   Modification History',
+      '   DATE        NAME             DESCRIPTION',
+      '   --------------------------------------------------------------------------',
+      '   YYYY-MM-DD',
+      ' *****************************************************************************/',
+    ].join('\n')
+    const result = findLiteralMatches(content, search)
+    expect(result.strategy).toBe('per-line-indent')
+    expect(result.matches).toEqual([{ start: 0, end: content.length - 1, strategy: 'per-line-indent' }])
   })
 
   it('splices a CRLF file while preserving its line endings', () => {
