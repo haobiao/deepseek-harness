@@ -953,7 +953,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 使用 `str_replace` 命令时请注意：
 
-* `old_str` 参数应与原文件中一行或多行连续内容**完全**匹配。请留意空白字符！
+* `old_str` 参数应与原文件中一行或多行连续内容匹配，最好完全一致。匹配会容忍行尾空白、制表符宽度、统一或逐行缩进差异、空行段数量差异以及排版标点差异；结果会说明是否使用了容错匹配。
 * 如果 `old_str` 参数在文件中不唯一，则不会执行替换。请确保在 `old_str` 中包含足够的上下文，使其唯一
 * `new_str` 参数应包含用于替换 `old_str` 的已编辑行
 
@@ -1084,7 +1084,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
     },
     "old_string": {
       "type": "string",
-      "description": "Literal text to replace."
+      "description": "Literal text to replace. Prefer an exact quote; trailing whitespace, tab width, uniform or per-line indentation differences, blank-line runs, and typographic punctuation are tolerated, and the result states when a tolerant match was used."
     },
     "new_string": {
       "type": "string",
