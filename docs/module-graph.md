@@ -22,6 +22,7 @@ flowchart TD
     pkg_package_manifest["package-manifest"]
     pkg_plugin_detail["plugin-detail"]
     pkg_plugin_market_index["plugin-market-index"]
+    pkg_text_encoding["text-encoding"]
     pkg_timeout["timeout"]
     pkg_util_code_language["util-code-language"]
     pkg_util_crypto["util-crypto"]
@@ -1529,6 +1530,7 @@ flowchart TD
 | [`package-manifest`](../packages/util/package-manifest) | `util` | — |
 | [`plugin-detail`](../packages/util/plugin-detail) | `util` | — |
 | [`plugin-market-index`](../packages/util/plugin-market-index) | `util` | — |
+| [`text-encoding`](../packages/util/text-encoding) | `util` | — |
 | [`timeout`](../packages/util/timeout) | `util` | — |
 | [`util-code-language`](../packages/util/code-language) | `util` | — |
 | [`util-crypto`](../packages/util/crypto) | `util` | — |

@@ -459,6 +459,7 @@ export function findLiteralMatches(content: string, search: string): LiteralMatc
  * @param content - the original string the matches index into.
  * @param matches - matches from {@link findLiteralMatches}, in ascending order.
  * @param replacement - literal replacement text.
+ * @returns the content with each matched range replaced.
  */
 export function replaceLiteralMatches(content: string, matches: readonly LiteralMatch[], replacement: string): string {
   let result = content
@@ -533,7 +534,11 @@ export function locateLiteralMismatch(content: string, search: string): LiteralM
   }
 }
 
-/** Render a mismatch as one model-facing clause. */
+/**
+ * Render a mismatch as one model-facing clause.
+ * @param mismatch - the nearest line and column reported by {@link locateLiteralMismatch}.
+ * @returns a single sentence naming the line, column, and differing snippets.
+ */
 export function formatLiteralMismatch(mismatch: LiteralMismatch): string {
   return `nearest candidate is line ${mismatch.line}, column ${mismatch.column}: expected "${mismatch.expected}" but found "${mismatch.actual}"`
 }
