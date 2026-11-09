@@ -32,6 +32,11 @@ on:
         options: ['3', '7']
         default: '7'
         required: true
+      force_package:
+        description: '代码无变动时也强制打包（仅手动触发时有效）'
+        type: boolean
+        default: false
+        required: false
 
 concurrency:
   group: nightly-upstream-sync
@@ -80,6 +85,8 @@ jobs:
 
           if git merge-base --is-ancestor upstream/master HEAD; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "### 上游无新提交" >> "$GITHUB_STEP_SUMMARY"
+            echo "已包含上游全部提交，跳过 Windows 打包。" >> "$GITHUB_STEP_SUMMARY"
             echo "已包含上游全部提交，无需合并"
             exit 0
           fi
@@ -128,6 +135,10 @@ jobs:
 
   package:
     needs: sync
+    # No code change means the previous artifact is still current: skip the
+    # build instead of burning a runner on an identical installer. Manual runs
+    # can opt in with force_package.
+    if: needs.sync.outputs.changed == 'true' || inputs.force_package == true
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
