@@ -83,11 +83,6 @@ function identityText(text: string): MappedText {
   return { text, start, end }
 }
 
-/** The original offset just past the transformed text, or zero for empty text. */
-function endPosition(source: MappedText): number {
-  return source.text.length === 0 ? 0 : (source.end[source.text.length - 1] as number)
-}
-
 /** Replace CRLF with LF while keeping each transformed character addressable. */
 function normalizeCrlf(content: string): MappedText {
   if (!content.includes('\r\n')) return identityText(content)
@@ -209,8 +204,8 @@ function offsetsIn(text: string, needle: string): number[] {
 
 /** Map a transformed range to the original string. */
 function toMappedRange(source: MappedText, start: number, end: number): { start: number; end: number } {
-  const originStart = source.start[start] ?? endPosition(source)
-  const originEnd = end <= start ? originStart : (source.end[end - 1] ?? endPosition(source))
+  const originStart = source.start[start] as number
+  const originEnd = end <= start ? originStart : (source.end[end - 1] as number)
   return { start: originStart, end: originEnd }
 }
 
@@ -238,7 +233,7 @@ function commonIndent(lines: readonly string[]): string {
   let prefix: string | undefined
   for (const line of lines) {
     if (rstrip(line).length === 0) continue
-    const indent = LEADING.exec(line)?.[0] ?? ''
+    const indent = line.slice(0, line.length - stripLeading(line).length)
     if (prefix === undefined) prefix = indent
     else {
       let length = 0
@@ -492,8 +487,7 @@ function snippetAt(line: string, offset: number): string {
   const start = Math.max(0, offset - before)
   const end = Math.min(line.length, offset + after)
   const characters = Array.from(line.slice(start, end))
-  const clipped = characters.length > after + before ? characters.slice(0, after + before) : characters
-  return `${start > 0 ? '…' : ''}${visible(clipped.join(''))}${end < line.length ? '…' : ''}`
+  return `${start > 0 ? '…' : ''}${visible(characters.join(''))}${end < line.length ? '…' : ''}`
 }
 
 /**
@@ -510,8 +504,13 @@ export function locateLiteralMismatch(content: string, search: string): LiteralM
   if (text.length === 0) return undefined
   const needle = normalizeCrlf(search).text
   const lines = text.split('\n')
-  const expectedCandidates = needle.split('\n')
-  const expectedLine = expectedCandidates.find(line => line.trim().length > 0) ?? expectedCandidates[0] ?? ''
+  let expectedLine = ''
+  for (const candidate of needle.split('\n')) {
+    if (candidate.trim().length > 0) {
+      expectedLine = candidate
+      break
+    }
+  }
   let bestLine = 0
   let bestDifference = 0
   let bestScore = -1

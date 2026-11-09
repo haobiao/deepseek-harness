@@ -169,6 +169,44 @@ describe('findLiteralMatches', () => {
     const result = findLiteralMatches(content, 'x')
     expect(replaceLiteralMatches(content, result.matches, 'long')).toBe('long y long')
   })
+
+  it('returns no matches for an empty search', () => {
+    expect(findLiteralMatches('a\n', '')).toEqual({ matches: [], strategy: 'exact' })
+  })
+
+  it('matches a whitespace-only search as an empty blank-line run', () => {
+    const result = findLiteralMatches('\n', '\t')
+    expect(result.strategy).toBe('blank-line-runs')
+    expect(result.matches).toEqual([{ start: 0, end: 0, strategy: 'blank-line-runs' }])
+  })
+
+  it('rejects a blank-run window whose first line differs', () => {
+    expect(findLiteralMatches('x\n\n\nb\n', 'a\n\nb').matches).toEqual([])
+  })
+
+  it('rejects a blank-run window that diverges after its first line', () => {
+    expect(findLiteralMatches('a\n\n\nc\n', 'a\n\nb').matches).toEqual([])
+  })
+
+  it('rejects a blank-run search longer than the compressed file', () => {
+    expect(findLiteralMatches('a\n', 'a\n\nb').matches).toEqual([])
+  })
+
+  it('rejects a blank-run match whose trailing newline is absent', () => {
+    expect(findLiteralMatches('a\n\n\nb', 'a\n\nb\n').matches).toEqual([])
+  })
+
+  it('extends a blank-run match over its trailing newline', () => {
+    const result = findLiteralMatches('a\n\n\nb\n', 'a\n\nb\n')
+    expect(result.strategy).toBe('blank-line-runs')
+    expect(result.matches).toEqual([{ start: 0, end: 6, strategy: 'blank-line-runs' }])
+  })
+
+  it('tolerates blank lines shorter than the shared indent', () => {
+    const result = findLiteralMatches('  a\n\n\n  b\n', '  a\n \n  b')
+    expect(result.strategy).toBe('blank-line-runs')
+    expect(result.matches).toEqual([{ start: 0, end: 9, strategy: 'blank-line-runs' }])
+  })
 })
 
 describe('locateLiteralMismatch', () => {
@@ -189,6 +227,28 @@ describe('locateLiteralMismatch', () => {
 
   it('returns undefined for empty content', () => {
     expect(locateLiteralMismatch('', 'x')).toBeUndefined()
+  })
+
+  it('renders tabs in mismatch snippets', () => {
+    const mismatch = locateLiteralMismatch('\tvalue\n', ' value')
+    expect(mismatch).toEqual({ line: 1, column: 1, expected: '·value', actual: '→value' })
+  })
+
+  it('clips long lines with an ellipsis on each side', () => {
+    const actualLine = 'x'.repeat(30) + 'a' + 'y'.repeat(60)
+    const expectedLine = 'x'.repeat(30) + 'b' + 'y'.repeat(60)
+    const mismatch = locateLiteralMismatch(`${actualLine}\n`, expectedLine)
+    expect(mismatch).toEqual({
+      line: 1,
+      column: 31,
+      expected: `…${'x'.repeat(24)}b${'y'.repeat(47)}…`,
+      actual: `…${'x'.repeat(24)}a${'y'.repeat(47)}…`,
+    })
+  })
+
+  it('points at a blank line when the search has only blank lines', () => {
+    const mismatch = locateLiteralMismatch('abc\n\n', '\n')
+    expect(mismatch).toEqual({ line: 2, column: 1, expected: '', actual: '' })
   })
 
   it('formats one model-facing clause', () => {
