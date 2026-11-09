@@ -170,7 +170,7 @@ class CreateGoalOutput2(TypedDict):
 class EditArgs(TypedDict):
     # Path to edit, resolved by the filesystem backend. Provide `file_path` before `old_string` and `new_string` in the arguments.
     file_path: str
-    # Literal text to replace.
+    # Literal text to replace. Prefer an exact quote; trailing whitespace, tab width, uniform or per-line indentation differences, blank-line runs, and typographic punctuation are tolerated, and the result states when a tolerant match was used.
     old_string: str
     # Literal replacement text. Use an empty string to delete the match.
     new_string: str
@@ -187,6 +187,8 @@ class EditOutput(TypedDict):
     path: str
     before: str
     after: str
+    # Present only when old_string matched after a whitespace or punctuation normalization.
+    matchStrategy: NotRequired[str]
 
 class GetGoalOutput1(TypedDict):
     goal: None

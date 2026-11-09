@@ -55,6 +55,15 @@ describe('decodeOutput', () => {
     expect(decodeOutput(new Uint8Array([0x61, 0x62, 0xef, 0xbb]))).not.toBe('ab')
   })
 
+  it('judges the bytes after an ASCII-only prefix instead of dropping them', () => {
+    // A cut tail leaves a partial UTF-8 lead after ASCII. Trimming back to the
+    // ASCII prefix proves nothing, so the whole sample is detected again.
+    const data = new Uint8Array([0x61, 0x62, 0x63, 0xe4])
+    const chunk = decodeOutputChunk(data, { tail: true })
+    expect(chunk.text.startsWith('abc')).toBe(true)
+    expect(chunk.consumedBytes).toBe(4)
+  })
+
   it('never throws for bytes no charset restores', () => {
     expect(() => decodeOutput(new Uint8Array([0xff, 0xff, 0xff]))).not.toThrow()
   })

@@ -949,6 +949,10 @@ describe('applyLiteralEdit', () => {
     expect(() => applyLiteralEdit('a b c', '', 'X', false, 'f')).toThrow(expect.objectContaining({ code: 'FS_EDIT_NOT_FOUND' }))
   })
 
+  it('says the file is empty instead of naming a nearest mismatch', () => {
+    expect(() => applyLiteralEdit('', 'z', 'X', false, 'f')).toThrow(/the file is empty/)
+  })
+
   it('rejects multiple matches without replaceAll', () => {
     expect(() => applyLiteralEdit('a a a', 'a', 'X', false, 'f')).toThrow(expect.objectContaining({ code: 'FS_AMBIGUOUS_EDIT' }))
   })

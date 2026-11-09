@@ -329,6 +329,19 @@ describe('FileSystemSkillProvider', () => {
     expect(await ctx.skills.get('gbk-skill')).toMatchObject({ description: '中文描述', content: '中文正文。' })
   })
 
+  it('falls back to lossy UTF-8 for a skill file no charset proves', async () => {
+    const home = await tempDir('skill-lossy')
+    const root = join(home, '.dsh/skills')
+    await mkdir(root, { recursive: true })
+    await writeFile(join(root, 'lossy-skill.md'), Buffer.concat([
+      Buffer.from('---\nname: lossy-skill\ndescription: Lossy\n---\n\n'),
+      Buffer.from([0xff]),
+    ]))
+
+    const ctx = await setupLocal(home)
+    expect(await ctx.skills.get('lossy-skill')).toMatchObject({ description: 'Lossy', content: '�' })
+  })
+
   it('accepts the documented boolean spellings for invocation frontmatter', async () => {
     const home = await tempDir('skill-invocation-booleans')
     const root = join(home, '.dsh/skills')

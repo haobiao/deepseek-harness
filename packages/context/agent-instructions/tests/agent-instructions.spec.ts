@@ -577,6 +577,28 @@ describe('workspace context instruction discovery', () => {
     }
   })
 
+  it('flushes the decoder tail for a Node-fallback stream cut inside a character', async () => {
+    const root = await tempRepo()
+    const home = await tempRepo()
+    try {
+      const cwd = join(root, 'pkg')
+      await mkdir(join(root, '.git'), { recursive: true })
+      await mkdir(cwd, { recursive: true })
+      // A lone UTF-8 lead byte: the sniffing decoder holds it back while
+      // streaming and can only report it from the final flush.
+      await writeFile(join(cwd, 'AGENTS.md'), Buffer.from([0xe4]))
+
+      pinHarnessHome(home)
+      const loaded = await loadBaselineInstructions({ cwd, maxBytes: 65536 })
+
+      expect(loaded?.text).toContain('�')
+    } finally {
+      vi.unstubAllEnvs()
+      await rm(root, { recursive: true, force: true })
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+
   it('decodes a GBK instruction file read through the Node fallback', async () => {
     const root = await tempRepo()
     const home = await tempRepo()

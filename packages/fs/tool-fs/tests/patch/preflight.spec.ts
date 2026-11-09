@@ -248,6 +248,16 @@ it('applies unread, externally changed, and overwritten targets on context match
   await expect(t.editIntent('b')).resolves.toBeUndefined()
 })
 
+it('omits the nearest-candidate note when there are no lines to compare', async () => {
+  const t = await setup()
+  await t.file('a', '')
+  const a = t.record('update', 'a')
+  const outcome = await t.run(patch(update('a')))
+  const message = outcome.phase === 'preflight' ? outcome.refusals[0]?.failure.message : undefined
+  expect(message).toBe(`cannot patch "${a.path}": hunk at patch line 3 (oldLines) does not match — old`)
+  expect(await t.bytes('a')).toBe('')
+})
+
 it('still rejects a mismatched hunk without a policy', async () => {
   const t = await setup({ policy: false })
   await t.file('a', 'other\n', false)

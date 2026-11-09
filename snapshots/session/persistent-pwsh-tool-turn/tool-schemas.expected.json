@@ -40,7 +40,7 @@
           },
           "old_string": {
             "type": "string",
-            "description": "Literal text to replace."
+            "description": "Literal text to replace. Prefer an exact quote; trailing whitespace, tab width, uniform or per-line indentation differences, blank-line runs, and typographic punctuation are tolerated, and the result states when a tolerant match was used."
           },
           "new_string": {
             "type": "string",

@@ -261,19 +261,19 @@ function sameLines(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((line, index) => line === right[index])
 }
 
-function relativeIndentOffsets(text: string, search: string): Array<{ start: number; end: number }> | undefined {
+/** Scan every aligned window of a multi-line search and report the ranges `accept` admits. */
+function acceptedOffsets(
+  text: string,
+  search: string,
+  accept: (spans: readonly LineSpan[], index: number, width: number) => boolean,
+): Array<{ start: number; end: number }> | undefined {
   const pattern = patternLines(search)
-  if (pattern.length < 2) return undefined
   const spans = bodyLines(text)
   if (pattern.length > spans.length) return undefined
   const requiresNewline = search.endsWith('\n')
-  const expected = dedent(pattern).map(rstrip)
-  const firstKey = rstrip(stripLeading(pattern[0] as string))
   const results: Array<{ start: number; end: number }> = []
   for (let index = 0; index + pattern.length <= spans.length; index++) {
-    if (rstrip(stripLeading((spans[index] as LineSpan).text)) !== firstKey) continue
-    const window = spans.slice(index, index + pattern.length).map(span => span.text)
-    if (!sameLines(expected, dedent(window).map(rstrip))) continue
+    if (!accept(spans, index, pattern.length)) continue
     const last = spans[index + pattern.length - 1] as LineSpan
     let end = last.start + last.text.length
     if (requiresNewline) {
@@ -285,6 +285,18 @@ function relativeIndentOffsets(text: string, search: string): Array<{ start: num
   return results
 }
 
+function relativeIndentOffsets(text: string, search: string): Array<{ start: number; end: number }> | undefined {
+  const pattern = patternLines(search)
+  if (pattern.length < 2) return undefined
+  const expected = dedent(pattern).map(rstrip)
+  const firstKey = rstrip(stripLeading(pattern[0] as string))
+  return acceptedOffsets(text, search, (spans, index, width) => {
+    if (rstrip(stripLeading((spans[index] as LineSpan).text)) !== firstKey) return false
+    const window = spans.slice(index, index + width).map(span => span.text)
+    return sameLines(expected, dedent(window).map(rstrip))
+  })
+}
+
 /**
  * Match when every line equals its counterpart after dropping that line's own
  * leading whitespace. Unlike {@link relativeIndentOffsets}, the offset need not be
@@ -294,32 +306,13 @@ function relativeIndentOffsets(text: string, search: string): Array<{ start: num
 function perLineIndentOffsets(text: string, search: string): Array<{ start: number; end: number }> | undefined {
   const pattern = patternLines(search)
   if (pattern.length < 2) return undefined
-  const spans = bodyLines(text)
-  if (pattern.length > spans.length) return undefined
-  const requiresNewline = search.endsWith('\n')
   const expected = pattern.map(line => rstrip(stripLeading(line)))
-  const firstKey = expected[0] as string
-  const results: Array<{ start: number; end: number }> = []
-  for (let index = 0; index + pattern.length <= spans.length; index++) {
-    if (rstrip(stripLeading((spans[index] as LineSpan).text)) !== firstKey) continue
-    let matched = true
-    for (let offset = 1; offset < pattern.length; offset++) {
-      const span = spans[index + offset] as LineSpan
-      if (rstrip(stripLeading(span.text)) !== expected[offset]) {
-        matched = false
-        break
-      }
+  return acceptedOffsets(text, search, (spans, index, width) => {
+    for (let offset = 0; offset < width; offset++) {
+      if (rstrip(stripLeading((spans[index + offset] as LineSpan).text)) !== expected[offset]) return false
     }
-    if (!matched) continue
-    const last = spans[index + pattern.length - 1] as LineSpan
-    let end = last.start + last.text.length
-    if (requiresNewline) {
-      if (text[end] !== '\n') continue
-      end += 1
-    }
-    results.push({ start: (spans[index] as LineSpan).start, end })
-  }
-  return results
+    return true
+  })
 }
 
 interface CompressedSpan {

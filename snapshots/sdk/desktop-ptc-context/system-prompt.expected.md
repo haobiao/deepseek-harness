@@ -113,7 +113,7 @@ interface ToolArgsMap {
   edit: {
     /** Path to edit, resolved by the filesystem backend. Provide `file_path` before `old_string` and `new_string` in the arguments. */
     file_path: string;
-    /** Literal text to replace. */
+    /** Literal text to replace. Prefer an exact quote; trailing whitespace, tab width, uniform or per-line indentation differences, blank-line runs, and typographic punctuation are tolerated, and the result states when a tolerant match was used. */
     old_string: string;
     /** Literal replacement text. Use an empty string to delete the match. */
     new_string: string;
@@ -464,6 +464,8 @@ interface ToolOutputMap {
     path: string;
     before: string;
     after: string;
+    /** Present only when old_string matched after a whitespace or punctuation normalization. */
+    matchStrategy?: string;
   };
   get_goal: {
     goal: null;

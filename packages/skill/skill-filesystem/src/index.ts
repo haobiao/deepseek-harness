@@ -873,6 +873,7 @@ async function readSkillText(ctx: Context, path: string, signal?: AbortSignal, t
     try {
       return { path: resolvedPath, content: decodeText(raw, detected.encoding) }
     } catch (error) {
+      /* v8 ignore next -- decodeText throws only UndecodableTextError for a sample no charset proves. */
       if (!(error instanceof UndecodableTextError)) throw error
       return { path: resolvedPath, content: raw.toString('utf8') }
     }

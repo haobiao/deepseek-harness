@@ -62,11 +62,11 @@ The contract is built on one separation and three commitments:
 |---|---|
 | [`src/index.ts`](src/index.ts) | Service definition: the abstract `FileSystem` class, the `ctx.fs` declaration, and the `fs/*` event vocabulary |
 | [`src/types.ts`](src/types.ts) | Vocabulary: `FsTarget`/`FsTargetKey`, `FsVersion`, `FsObservation`, `FsWriteIntent`, `FsError` and its codes |
-| [`src/encoding/index.ts`](src/encoding/index.ts) | Public encoding surface: detection, decoding, encoding, and stream decoders re-exported for backends and text consumers |
-| [`src/encoding/detect.ts`](src/encoding/detect.ts) | BOM → strict UTF-8 → legacy-charset round-trip detection for a bounded byte sample |
-| [`src/encoding/codec.ts`](src/encoding/codec.ts) | Whole-buffer and streaming conversion; `iconv-lite` backs the legacy charsets (UTF-8 uses `TextDecoder`) |
-| [`src/encoding/boundaries.ts`](src/encoding/boundaries.ts) | Whole-character boundaries so a cut sample or stream chunk never splits a character |
-| [`src/encoding/types.ts`](src/encoding/types.ts) | `TextEncoding`, `LegacyCharset`, `StreamDecoder`, and the decode/encode errors |
+| [`text-encoding/src/index.ts`](../../util/text-encoding/src/index.ts) | Public encoding surface: detection, decoding, encoding, and stream decoders re-exported for backends and text consumers |
+| [`text-encoding/src/detect.ts`](../../util/text-encoding/src/detect.ts) | BOM → strict UTF-8 → legacy-charset round-trip detection for a bounded byte sample |
+| [`text-encoding/src/codec.ts`](../../util/text-encoding/src/codec.ts) | Whole-buffer and streaming conversion; `iconv-lite` backs the legacy charsets (UTF-8 uses `TextDecoder`) |
+| [`text-encoding/src/boundaries.ts`](../../util/text-encoding/src/boundaries.ts) | Whole-character boundaries so a cut sample or stream chunk never splits a character |
+| [`text-encoding/src/types.ts`](../../util/text-encoding/src/types.ts) | `TextEncoding`, `LegacyCharset`, `StreamDecoder`, and the decode/encode errors |
 
 ### How a call flows
 

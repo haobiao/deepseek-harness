@@ -709,6 +709,13 @@ describe('editText', () => {
     expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('hello there')
   })
 
+  it('reports the tolerant match strategy a fuzzy edit used', async () => {
+    await writeFile(join(dir, 'a.txt'), 'hello   \nworld\n')
+    const target = await fs.resolve('a.txt')
+    const outcome = await fs.editText(target, { oldString: 'hello\nworld', newString: 'bye', replaceAll: false })
+    expect(outcome).toMatchObject({ after: 'bye\n', matchStrategy: 'trailing-whitespace' })
+  })
+
   it('reports before/after content (the applied-hunk basis), LF-normalized', async () => {
     await writeFile(join(dir, 'a.txt'), 'a\r\nOLD\r\nb\r\n')
     const target = await fs.resolve('a.txt')

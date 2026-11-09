@@ -69,6 +69,30 @@ describe('findLiteralMatches', () => {
     expect(replaceLiteralMatches(content, result.matches, 'done')).toBe('done\n')
   })
 
+  it('reports per-line matching over the full range when the search ends with a newline', () => {
+    const content = '  a\n    b\n'
+    const result = findLiteralMatches(content, ' a\n     b\n')
+    expect(result.strategy).toBe('per-line-indent')
+    expect(result.matches.map(match => [match.start, match.end])).toEqual([[0, 10]])
+  })
+
+  it('does not use the per-line pass when the trailing newline is absent from the file', () => {
+    const result = findLiteralMatches('  a\n    b', ' a\n     b\n')
+    expect(result.matches.some(match => match.strategy === 'per-line-indent')).toBe(false)
+  })
+
+  it('rejects a per-line window that diverges after its first line', () => {
+    expect(findLiteralMatches('  a\n    b\n  c\n', ' a\n     b\n  z').matches).toEqual([])
+  })
+
+  it('rejects a uniform-indent window that diverges after its first line', () => {
+    expect(findLiteralMatches('  a\n    b\n', ' a\n   c').matches).toEqual([])
+  })
+
+  it('does not match a multi-line search longer than the file', () => {
+    expect(findLiteralMatches('a\n', ' x\n y').matches).toEqual([])
+  })
+
   it('only reaches the per-line pass after a uniform offset failed', () => {
     const result = findLiteralMatches('  a\n  b\n', ' a\n b')
     expect(result.strategy).toBe('relative-indent')

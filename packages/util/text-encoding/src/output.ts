@@ -42,7 +42,10 @@ function headTrimLength(data: Uint8Array, cut: Cut): number {
   if (cut.head !== true) return 0
   let start = 0
   // At most three continuation bytes fit in one UTF-8 sequence's tail.
-  while (start < 3 && start < data.length && ((data[start] ?? 0) & 0xc0) === 0x80) start += 1
+  while (start < 3 && start < data.length) {
+    if (((data[start] as number) & 0xc0) !== 0x80) break
+    start += 1
+  }
   return start
 }
 
@@ -60,8 +63,10 @@ function utf8Text(data: Uint8Array): string {
 function decodeDetected(body: Uint8Array, start: number, detected: DetectedTextEncoding): DecodedOutputChunk {
   const whole = body.subarray(0, detected.wholeLength)
   switch (detected.encoding) {
+    /* v8 ignore next 2 -- valid UTF-8 returned above, before detection; the switch still needs it to be exhaustive. */
     case 'utf8':
       return { text: utf8Text(whole), consumedBytes: start + whole.length }
+    /* v8 ignore next 2 -- a BOM-prefixed sample returned above, before detection; the switch still needs it to be exhaustive. */
     case 'utf8-bom':
       return { text: utf8Text(whole.subarray(3)), consumedBytes: start + whole.length }
     case 'gb18030':
@@ -104,10 +109,11 @@ export function decodeOutputChunk(data: Uint8Array, cut: Cut = {}): DecodedOutpu
     return { text: utf8Text(whole), consumedBytes: start + whole.length }
   }
   let detected = detectEncoding(body, { fragment: cut.tail === true })
-  if (detected.encoding === 'utf8' && detected.wholeLength < body.length
-    && !hasMultiByteUtf8(body.subarray(0, detected.wholeLength))) {
-    // Trimming back to ASCII is not UTF-8 proof: the bytes past it are judged on
-    // their own charset instead of being dropped.
+  if (detected.encoding === 'utf8') {
+    // Every valid-UTF-8 shape that proves the charset returned above, so only an
+    // ASCII-only prefix reaches here. Trimming back to ASCII alone is not UTF-8
+    // proof: the bytes past it are judged on their own charset instead of being
+    // dropped.
     detected = detectEncoding(body)
   }
   return decodeDetected(body, start, detected)
