@@ -11970,6 +11970,9 @@ importers:
       '@deepseek-ai/dsh-fs-patch':
         specifier: workspace:*
         version: link:../fs-patch
+      iconv-lite:
+        specifier: 0.7.3
+        version: 0.7.3
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
@@ -11995,9 +11998,6 @@ importers:
       chokidar:
         specifier: 5.0.0
         version: 5.0.0
-      iconv-lite:
-        specifier: 0.7.3
-        version: 0.7.3
       koffi:
         specifier: 3.1.1
         version: 3.1.1
@@ -12011,6 +12011,9 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:*
         version: link:../../llm/llm
+      iconv-lite:
+        specifier: 0.7.3
+        version: 0.7.3
 
   packages/fs/fs-observation-policy:
     devDependencies:

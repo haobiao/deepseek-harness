@@ -1,7 +1,7 @@
 /** Git working-tree snapshots, tree diffs, and ignore checks through the subprocess capability. */
 import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
-import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessOutputMode, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { parseNumstat, type NumstatEntry } from './numstat.ts'
 import { canonicalPath, isInside, toPosix } from './paths.ts'
 
@@ -16,6 +16,16 @@ export interface GitRunResult {
   stdout: string
   stderr: string
   /** True when stdout exceeded the output cap and lost its head. */
+  truncated: boolean
+}
+
+/** Settled git command facts for a raw stdout byte stream. */
+export interface GitBytesResult {
+  exitCode: number | null
+  /** Raw stdout bytes, at most the requested cap. */
+  bytes: Buffer
+  stderr: string
+  /** True when stdout exceeded the byte cap; `bytes` then keeps only its prefix. */
   truncated: boolean
 }
 
@@ -55,12 +65,68 @@ export class GitRunner {
   async run(args: readonly string[], options: GitRunOptions): Promise<GitRunResult> {
     const timeout = AbortSignal.timeout(this.limits.timeoutMs)
     const signal = AbortSignal.any([options.signal, timeout])
-    const handle = this.subprocess.spawn({
+    const handle = this.launch(args, options, { maxBytes: options.maxBytes ?? this.limits.outputMaxBytes }, signal)
+    const outcome = await handle.done
+    this.rethrowAbort(args, timeout, signal)
+    /* v8 ignore start -- collect-mode stdio always yields both readers. */
+    const stdout = handle.collected.stdout?.readFrom(0) ?? { text: '', lossy: false }
+    const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
+    /* v8 ignore stop */
+    return { exitCode: outcome.exitCode, stdout: stdout.text, stderr, truncated: stdout.lossy }
+  }
+
+  /**
+   * Run `git <args>` to completion, collecting stdout as raw bytes instead of
+   * decoding it as UTF-8 — the path for content stored in another encoding.
+   * @param args - git arguments; never shell-interpreted.
+   * @param options - working directory, extra environment, and cancellation.
+   * @returns exit facts and at most the requested number of stdout bytes.
+   * @throws when the command times out, is aborted, or cannot spawn.
+   */
+  async runBytes(args: readonly string[], options: GitRunOptions): Promise<GitBytesResult> {
+    const timeout = AbortSignal.timeout(this.limits.timeoutMs)
+    const signal = AbortSignal.any([options.signal, timeout])
+    // A negative cap is meaningless and would turn `subarray(0, room)` into a
+    // from-the-end slice, so clamp it instead of trusting the caller.
+    const maxBytes = Math.max(0, options.maxBytes ?? this.limits.outputMaxBytes)
+    const handle = this.launch(args, options, 'pipe', signal)
+    const chunks: Buffer[] = []
+    let size = 0
+    let truncated = false
+    /* v8 ignore start -- a piped stdout is always present. */
+    if (handle.stdout !== undefined) {
+      for await (const chunk of handle.stdout) {
+        /* v8 ignore next -- piped chunks are Buffers, and overflow keeps draining without storing. */
+        if (truncated) continue
+        const bytes = chunk as Buffer
+        const room = maxBytes - size
+        if (bytes.length > room) {
+          chunks.push(bytes.subarray(0, room))
+          size = maxBytes
+          truncated = true
+          continue
+        }
+        chunks.push(bytes)
+        size += bytes.length
+      }
+    }
+    /* v8 ignore stop */
+    const outcome = await handle.done
+    this.rethrowAbort(args, timeout, signal)
+    /* v8 ignore start -- collect-mode stderr always yields a reader. */
+    const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
+    /* v8 ignore stop */
+    return { exitCode: outcome.exitCode, bytes: Buffer.concat(chunks), stderr, truncated }
+  }
+
+  /** Spawn one git child under the scrub, grace, and stdio shape every command shares. */
+  private launch(args: readonly string[], options: GitRunOptions, stdout: SubprocessOutputMode, signal: AbortSignal) {
+    return this.subprocess.spawn({
       argv: [this.executable, ...args],
       cwd: options.cwd,
       stdio: {
         stdin: options.stdin === undefined ? 'ignore' : { data: options.stdin },
-        stdout: { maxBytes: options.maxBytes ?? this.limits.outputMaxBytes },
+        stdout,
         stderr: { maxBytes: STDERR_TAIL_BYTES },
       },
       graceMs: TERMINATE_GRACE_MS,
@@ -68,15 +134,13 @@ export class GitRunner {
       // The subprocess credential scrub removes ambient GIT_CONFIG_KEY_n entries.
       env: { GIT_CONFIG_COUNT: '0', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C', ...options.env },
     })
-    const outcome = await handle.done
+  }
+
+  /** Reject the caller's abort classification once the child has settled. */
+  private rethrowAbort(args: readonly string[], timeout: AbortSignal, signal: AbortSignal): void {
     if (signal.aborted) {
       throw new Error(`git ${args.join(' ')} ${timeout.aborted ? `timed out after ${this.limits.timeoutMs}ms` : 'was aborted'}`)
     }
-    /* v8 ignore start -- collect-mode stdio always yields both readers. */
-    const stdout = handle.collected.stdout?.readFrom(0) ?? { text: '', lossy: false }
-    const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
-    /* v8 ignore stop */
-    return { exitCode: outcome.exitCode, stdout: stdout.text, stderr, truncated: stdout.lossy }
   }
 }
 
@@ -86,7 +150,7 @@ export class GitRunner {
  * @param what - command description for the error message.
  * @returns the same result when it exited zero.
  */
-function ok(result: GitRunResult, what: string): GitRunResult {
+function ok<T extends { exitCode: number | null; stderr: string }>(result: T, what: string): T {
   if (result.exitCode !== 0) throw new Error(`${what} failed: ${result.stderr.trim()}`)
   return result
 }
@@ -201,21 +265,22 @@ export async function treeBlob(
 }
 
 /**
- * The text of one blob whose size {@link treeBlob} reported within the cap.
+ * The raw bytes of one blob whose size {@link treeBlob} reported within the cap.
+ * Bytes, not text: only the caller knows which encoding the file is stored in.
  * @param git - command runner.
  * @param workspace - addressed repository.
  * @param oid - blob id.
  * @param maxBytes - inclusive byte cap the caller checked the blob's size against.
  * @param signal - cancellation.
- * @returns the blob decoded as UTF-8.
+ * @returns the blob bytes.
  */
-export async function blobText(
+export async function blobBytes(
   git: GitRunner, workspace: GitWorkspace, oid: string, maxBytes: number, signal: AbortSignal,
-): Promise<string> {
-  const result = ok(await git.run(['cat-file', 'blob', oid], { cwd: workspace.root, env: workspace.env, maxBytes, signal }), 'git cat-file')
+): Promise<Buffer> {
+  const result = ok(await git.runBytes(['cat-file', 'blob', oid], { cwd: workspace.root, env: workspace.env, maxBytes, signal }), 'git cat-file')
   /* v8 ignore next -- callers size the blob with treeBlob first; a blob is immutable, so the cap cannot be exceeded here. */
   if (result.truncated) throw new Error(`blob ${oid} exceeds ${maxBytes} bytes`)
-  return result.stdout
+  return result.bytes
 }
 
 /**

@@ -2,7 +2,7 @@
  * Encoding vocabulary for the local backend's text reads and writes: which
  * encodings a stored file may use, what a bounded detection sample decided, and
  * the two failures that decide whether a read or a write may proceed.
- * @module @deepseek-ai/dsh-fs-local/encoding/types
+ * @module @deepseek-ai/dsh-fs/encoding/types
  */
 
 /**

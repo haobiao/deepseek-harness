@@ -1051,7 +1051,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 ### `apply_patch`
 
-用一个补丁新增、更新、删除或移动 UTF-8 文本文件；变更跨越多个文件或分离区域时，优先于多次 edit 调用。
+用一个补丁新增、更新、删除或移动文本文件；支持 UTF-8、GB18030 和 GBK 编码；变更跨越多个文件或分离区域时，优先于多次 edit 调用。
 
 ```json
 {
@@ -1072,7 +1072,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 ### `edit`
 
-通过替换字面量文本来编辑现有 UTF-8 文本文件。
+通过替换字面量文本来编辑现有文本文件；支持 UTF-8、GB18030 和 GBK 编码。
 
 ```json
 {
@@ -1107,7 +1107,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 ### `read`
 
-读取 UTF-8 文本文件，并返回带行号的内容。
+读取文本文件，并返回带行号的内容；支持 UTF-8、GB18030 和 GBK 编码。
 
 ```json
 {
@@ -1157,7 +1157,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 ### `write`
 
-创建或完全替换 UTF-8 文本文件。
+创建或完全替换文本文件；支持 UTF-8、GB18030 和 GBK 编码。
 
 ```json
 {
@@ -1169,7 +1169,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
     },
     "content": {
       "type": "string",
-      "description": "Full UTF-8 text content to write."
+      "description": "Full text content to write."
     }
   },
   "required": [

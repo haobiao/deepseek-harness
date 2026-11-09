@@ -4,7 +4,9 @@
  * binary rejection, and atomic mutations. Read windows and
  * observed-state policy stay in consumer and policy plugins; `editText`
  * remains here so version check, literal match, and rewrite share one critical
- * section.
+ * section. The text-encoding codec is exported here too, so a consumer holding
+ * raw bytes (a snapshot blob, a captured copy) decodes them the way a backend
+ * would.
  * @module @deepseek-ai/dsh-fs
  */
 
@@ -48,6 +50,26 @@ export type {
   FsWriteIntent,
   FsWriteOutcome,
 } from './types.ts'
+export {
+  asBuffer,
+  createStreamDecoder,
+  decodeText,
+  detectEncoding,
+  encodeText,
+  isValidUtf8,
+  roundTrips,
+  startsWithUtf8Bom,
+  trimPartialUtf8,
+  UndecodableTextError,
+  UnencodableTextError,
+  wholeCharsetLength,
+} from './encoding/index.ts'
+export type {
+  DetectedTextEncoding,
+  LegacyCharset,
+  StreamDecoder,
+  TextEncoding,
+} from './encoding/index.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

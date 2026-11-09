@@ -1,5 +1,5 @@
 /**
- * Model-facing UTF-8 read. It performs one provider stat for type, routing, and observed version,
+ * Model-facing text read. It performs one provider stat for type, routing, and observed version,
  * streams large or size-unknown files, renders a bounded window, then emits the observation.
  * @module @deepseek-ai/dsh-tool-fs/src/read
  */
@@ -76,7 +76,7 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
 
   ctx.tools.register(defineTool({
     name: 'read',
-    description: 'Read a UTF-8 text file and return line-numbered content.',
+    description: 'Read a text file and return line-numbered content. UTF-8, GB18030, and GBK encodings are decoded.',
     parameters: {
       file_path: { type: 'string', required: true, description: 'Path to read, resolved by the filesystem backend.' },
       offset: { type: 'number', description: '1-based first line to return. Defaults to 1.' },

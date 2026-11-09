@@ -163,6 +163,65 @@ describe('workspace-changes in a repository', () => {
     expect(await diff(0)).toBeUndefined()
   })
 
+  it('decodes GBK files on both snapshot and captured sides instead of showing replacement characters', async () => {
+    const cwd = await repository()
+    // "旧内容\n" and "新内容\n" in GBK: neither byte pair is valid UTF-8.
+    const before = Buffer.from([0xbe, 0xc9, 0xc4, 0xda, 0xc8, 0xdd, 0x0a])
+    const after = Buffer.from([0xd0, 0xc2, 0xc4, 0xda, 0xc8, 0xdd, 0x0a])
+    await writeFile(join(cwd, 'gbk.txt'), before)
+    git(cwd, 'add', 'gbk.txt'); git(cwd, 'commit', '-q', '-m', 'gbk')
+    // An ignored file reaches the comparison through its captured copies rather than a snapshot.
+    await writeFile(join(cwd, '.env'), before)
+    const { ctx } = await boot()
+    const session = ctx.sessions.create(SessionId('gbk'), { meta: { cwd } })
+    startTurn(session, 1)
+    await settle(ctx, session)
+    await mutate(ctx, session, 1, 'edit', { file_path: 'gbk.txt', old_string: '旧内容', new_string: '新内容' },
+      'gbk.txt', () => writeFile(join(cwd, 'gbk.txt'), after), { meta: { diffs: [{ path: 'gbk.txt', oldText: '旧内容', newText: '新内容' }] } })
+    await mutate(ctx, session, 1, 'edit', { file_path: '.env', old_string: '旧内容', new_string: '新内容' },
+      '.env', () => writeFile(join(cwd, '.env'), after))
+    endTurn(session, 1)
+    await settle(ctx, session)
+    const seq = announcedSeq(session)
+    expect(changes(ctx, session)[0]!.files).toEqual([
+      { path: '.env', display: '.env', added: 1, deleted: 1 },
+      { path: 'gbk.txt', display: 'gbk.txt', added: 1, deleted: 1 },
+    ])
+    const hunks = [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-旧内容', '+新内容'] }]
+    expect(await ctx.workspaceChanges.diff(session.id, seq, 0, signal)).toEqual({
+      kind: 'text', path: '.env', display: '.env', before: true, after: true, coarse: false, hunks,
+    })
+    expect(await ctx.workspaceChanges.diff(session.id, seq, 1, signal)).toEqual({
+      kind: 'text', path: 'gbk.txt', display: 'gbk.txt', before: true, after: true, coarse: false, hunks,
+    })
+  })
+
+  it('falls back to lossy UTF-8 for bytes no supported charset round-trips', async () => {
+    const cwd = await repository()
+    // 0xff is invalid UTF-8 and not a GB18030 byte, so no charset restores it;
+    // the preview shows the replacement character instead of refusing to compare.
+    const before = Buffer.from([0x41, 0xff, 0x0a])
+    const after = Buffer.from([0x42, 0xff, 0x0a])
+    await writeFile(join(cwd, 'lossy.txt'), before)
+    git(cwd, 'add', 'lossy.txt'); git(cwd, 'commit', '-q', '-m', 'lossy')
+    const { ctx } = await boot()
+    const session = ctx.sessions.create(SessionId('lossy'), { meta: { cwd } })
+    startTurn(session, 1)
+    await settle(ctx, session)
+    await mutate(ctx, session, 1, 'write', { file_path: 'lossy.txt', content: 'B�\n' },
+      'lossy.txt', () => writeFile(join(cwd, 'lossy.txt'), after))
+    endTurn(session, 1)
+    await settle(ctx, session)
+    const seq = announcedSeq(session)
+    expect(changes(ctx, session)[0]!.files).toEqual([
+      { path: 'lossy.txt', display: 'lossy.txt', added: 1, deleted: 1 },
+    ])
+    expect(await ctx.workspaceChanges.diff(session.id, seq, 0, signal)).toEqual({
+      kind: 'text', path: 'lossy.txt', display: 'lossy.txt', before: true, after: true, coarse: false,
+      hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-A�', '+B�'] }],
+    })
+  })
+
   it('records nothing and stays quiet about captures for a working directory that no longer exists', async () => {
     const root = await scratchDir('dsh-workspace-changes-gone-', cleanups)
     const cwd = join(root, 'gone')

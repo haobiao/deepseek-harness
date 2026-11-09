@@ -54,7 +54,7 @@ Program-only SDK bindings:
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
 interface ToolArgsMap {
-  /** Create, update, delete, or move UTF-8 text files with one patch; prefer it over multiple edit calls when a change spans several files or separated regions. */
+  /** Create, update, delete, or move text files with one patch; UTF-8, GB18030, and GBK encodings are supported; prefer it over multiple edit calls when a change spans several files or separated regions. */
   apply_patch: {
     /** Patch text: start with *** Begin Patch and end with *** End Patch. Use *** Add File: path with + lines; *** Update File: path, optionally followed by *** Move to: path, with @@ or @@ context and space-prefixed context, + added, or - removed lines; *** End of File anchors the last hunk to the file end. Use *** Delete File: path to delete. Paths are relative to the Session working directory. */
     input: string;
@@ -87,7 +87,7 @@ interface ToolArgsMap {
     /** Optional positive safe-integer limit on automatic continuation rounds. */
     max_goal_rounds?: number;
   } & Record<string, JsonValue>;
-  /** Edit an existing UTF-8 text file by replacing literal text. */
+  /** Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported. */
   edit: {
     /** Path to edit, resolved by the filesystem backend. Provide `file_path` before `old_string` and `new_string` in the arguments. */
     file_path: string;
@@ -145,7 +145,7 @@ interface ToolArgsMap {
   } & Record<string, JsonValue>;
   /** List your entire subagent tree: the root agent and all reachable continuable descendants, including yourself. Rows carry names, descriptions, and status. A descendant's name is its path from the root, such as reviewer/checker. You can message any other agent in the subagent tree. running means it is working; inactive means no turn is executing; it does not indicate task completion, success, or failure. corrupt, unsupported, or unavailable means this row's own descendants could not be read; the row itself is still a member you can message. While you remain active, you will be notified when a direct child finishes; there is no need to keep checking its status. Use send_message to continue the conversation. */
   list_agents: Record<string, JsonValue>;
-  /** Read a UTF-8 text file and return line-numbered content. */
+  /** Read a text file and return line-numbered content. UTF-8, GB18030, and GBK encodings are decoded. */
   read: {
     /** Path to read, resolved by the filesystem backend. */
     file_path: string;
@@ -269,11 +269,11 @@ interface ToolArgsMap {
     /** Existing directory to enter. Omit to read the current directory. */
     cd?: string;
   } & Record<string, JsonValue>;
-  /** Create or fully replace a UTF-8 text file. */
+  /** Create or fully replace a text file. UTF-8, GB18030, and GBK encodings are supported. */
   write: {
     /** Path to write, resolved by the filesystem backend. Provide `file_path` before `content` in the arguments. */
     file_path: string;
-    /** Full UTF-8 text content to write. */
+    /** Full text content to write. */
     content: string;
     /** The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval. */
     sandbox_permissions?: "workspace-write" | "danger-full-access";

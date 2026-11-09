@@ -62,6 +62,11 @@ kind: "package-reference"
 |---|---|
 | [`src/index.ts`](src/index.ts) | 服务定义：抽象 `FileSystem` 类、`ctx.fs` 声明与 `fs/*` 事件词汇 |
 | [`src/types.ts`](src/types.ts) | 词汇：`FsTarget`/`FsTargetKey`、`FsVersion`、`FsObservation`、`FsWriteIntent`、`FsError` 及其错误码 |
+| [`src/encoding/index.ts`](src/encoding/index.ts) | 对外编码接口：向 backends 和文本消费方重新导出检测、解码、编码与流式解码器 |
+| [`src/encoding/detect.ts`](src/encoding/detect.ts) | 有界字节采样的检测顺序：BOM → 严格 UTF-8 → legacy 字符集往返校验 |
+| [`src/encoding/codec.ts`](src/encoding/codec.ts) | 整块与流式转换；legacy 字符集由 `iconv-lite` 支撑（UTF-8 使用 `TextDecoder`） |
+| [`src/encoding/boundaries.ts`](src/encoding/boundaries.ts) | 整字符边界，保证截断采样或流式分块不会切开字符 |
+| [`src/encoding/types.ts`](src/encoding/types.ts) | `TextEncoding`、`LegacyCharset`、`StreamDecoder` 以及解码/编码错误 |
 
 ### 调用流程
 

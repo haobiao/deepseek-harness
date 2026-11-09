@@ -39,6 +39,7 @@
     "@deepseek-ai/cordis": "workspace:~"
   },
   "dependencies": {
+    "iconv-lite": "0.7.3",
     "@deepseek-ai/dsh-fs-patch": "workspace:*"
   }
 }

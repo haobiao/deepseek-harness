@@ -1045,7 +1045,7 @@ Standalone view/create/unique literal replace/line insert tool over the filesyst
 
 ### `apply_patch`
 
-Create, update, delete, or move UTF-8 text files with one patch; prefer it over multiple edit calls when a change spans several files or separated regions.
+Create, update, delete, or move text files with one patch; UTF-8, GB18030, and GBK encodings are supported; prefer it over multiple edit calls when a change spans several files or separated regions.
 
 ```json
 {
@@ -1066,7 +1066,7 @@ Source: [`packages/fs/tool-fs/src/index.ts`](../packages/fs/tool-fs/src/index.ts
 
 ### `edit`
 
-Edit an existing UTF-8 text file by replacing literal text.
+Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported.
 
 ```json
 {
@@ -1101,7 +1101,7 @@ Source: [`packages/fs/tool-fs/src/index.ts`](../packages/fs/tool-fs/src/index.ts
 
 ### `read`
 
-Read a UTF-8 text file and return line-numbered content.
+Read a text file and return line-numbered content. UTF-8, GB18030, and GBK encodings are decoded.
 
 ```json
 {
@@ -1151,7 +1151,7 @@ Source: [`packages/fs/tool-fs/src/index.ts`](../packages/fs/tool-fs/src/index.ts
 
 ### `write`
 
-Create or fully replace a UTF-8 text file.
+Create or fully replace a text file. UTF-8, GB18030, and GBK encodings are supported.
 
 ```json
 {
@@ -1163,7 +1163,7 @@ Create or fully replace a UTF-8 text file.
     },
     "content": {
       "type": "string",
-      "description": "Full UTF-8 text content to write."
+      "description": "Full text content to write."
     }
   },
   "required": [

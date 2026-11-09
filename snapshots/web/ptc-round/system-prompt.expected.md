@@ -96,7 +96,7 @@ interface ToolArgsMap {
     /** Optional positive safe-integer limit on automatic continuation rounds. */
     max_goal_rounds?: number;
   } & Record<string, JsonValue>;
-  /** Edit an existing UTF-8 text file by replacing literal text. */
+  /** Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported. */
   edit: {
     /** Path to edit, resolved by the filesystem backend. Provide `file_path` before `old_string` and `new_string` in the arguments. */
     file_path: string;
@@ -171,7 +171,7 @@ interface ToolArgsMap {
       description?: string;
     }[];
   } & Record<string, JsonValue>;
-  /** Read a UTF-8 text file and return line-numbered content. */
+  /** Read a text file and return line-numbered content. UTF-8, GB18030, and GBK encodings are decoded. */
   read: {
     /** Path to read, resolved by the filesystem backend. */
     file_path: string;
@@ -314,11 +314,11 @@ interface ToolArgsMap {
     /** Existing directory to enter. Omit to read the current directory. */
     cd?: string;
   } & Record<string, JsonValue>;
-  /** Create or fully replace a UTF-8 text file. */
+  /** Create or fully replace a text file. UTF-8, GB18030, and GBK encodings are supported. */
   write: {
     /** Path to write, resolved by the filesystem backend. Provide `file_path` before `content` in the arguments. */
     file_path: string;
-    /** Full UTF-8 text content to write. */
+    /** Full text content to write. */
     content: string;
     /** The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval. */
     sandbox_permissions?: "workspace-write" | "danger-full-access";

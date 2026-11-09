@@ -3,7 +3,7 @@
  * Chinese charsets by byte-for-byte round trip. Detection never guesses from
  * plausibility — a legacy decoder replaces bytes it cannot read with U+FFFD, so
  * only a decode-then-encode that restores the sample proves the charset.
- * @module @deepseek-ai/dsh-fs-local/encoding/detect
+ * @module @deepseek-ai/dsh-fs/encoding/detect
  */
 
 import iconv from 'iconv-lite'

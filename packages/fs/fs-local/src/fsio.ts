@@ -24,8 +24,8 @@ import {
   trimPartialUtf8,
   UndecodableTextError,
   UnencodableTextError,
-} from './encoding/index.ts'
-import type { DetectedTextEncoding, StreamDecoder, TextEncoding } from './encoding/index.ts'
+} from '@deepseek-ai/dsh-fs'
+import type { DetectedTextEncoding, StreamDecoder, TextEncoding } from '@deepseek-ai/dsh-fs'
 
 const BINARY_SAMPLE_BYTES = 8192
 /** Bytes sampled to detect a file's encoding; a larger file decides from this head. */
@@ -643,9 +643,11 @@ export async function* streamWholeText(
     const tail = decoder.end()
     if (tail.length > 0) yield tail
   } catch (error: unknown) {
-    /* v8 ignore next 4 -- mid-stream errors need an abort/IO fault racing the loop; pre-abort is caught by throwIfAborted. */
+    /* v8 ignore start -- needs a mid-stream abort or IO fault racing the read loop; no fixture drives either branch. */
     if (isAbortError(error)) throw new FsError('read aborted', 'FS_ABORTED')
+    if (error instanceof UndecodableTextError) throw notTextError('read', target.displayPath)
     throw error
+    /* v8 ignore stop */
   }
 }
 

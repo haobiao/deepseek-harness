@@ -2,7 +2,7 @@
  * Byte-level text conversion for the local backend: decode a detected encoding
  * into a JavaScript string, encode a string back under a file's own encoding,
  * and stream both without ever splitting a character across chunks.
- * @module @deepseek-ai/dsh-fs-local/encoding/codec
+ * @module @deepseek-ai/dsh-fs/encoding/codec
  */
 
 import iconv from 'iconv-lite'

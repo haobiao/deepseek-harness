@@ -2,7 +2,7 @@
   "initial": [
     {
       "name": "apply_patch",
-      "description": "Create, update, delete, or move UTF-8 text files with one patch; prefer it over multiple edit calls when a change spans several files or separated regions.",
+      "description": "Create, update, delete, or move text files with one patch; UTF-8, GB18030, and GBK encodings are supported; prefer it over multiple edit calls when a change spans several files or separated regions.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -158,7 +158,7 @@
     },
     {
       "name": "edit",
-      "description": "Edit an existing UTF-8 text file by replacing literal text.",
+      "description": "Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -422,7 +422,7 @@
     },
     {
       "name": "read",
-      "description": "Read a UTF-8 text file and return line-numbered content.",
+      "description": "Read a text file and return line-numbered content. UTF-8, GB18030, and GBK encodings are decoded.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -907,7 +907,7 @@
     },
     {
       "name": "write",
-      "description": "Create or fully replace a UTF-8 text file.",
+      "description": "Create or fully replace a text file. UTF-8, GB18030, and GBK encodings are supported.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -917,7 +917,7 @@
           },
           "content": {
             "type": "string",
-            "description": "Full UTF-8 text content to write."
+            "description": "Full text content to write."
           },
           "sandbox_permissions": {
             "type": "string",
@@ -943,7 +943,7 @@
     [
       {
         "name": "apply_patch",
-        "description": "Create, update, delete, or move UTF-8 text files with one patch; prefer it over multiple edit calls when a change spans several files or separated regions.",
+        "description": "Create, update, delete, or move text files with one patch; UTF-8, GB18030, and GBK encodings are supported; prefer it over multiple edit calls when a change spans several files or separated regions.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1099,7 +1099,7 @@
       },
       {
         "name": "edit",
-        "description": "Edit an existing UTF-8 text file by replacing literal text.",
+        "description": "Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1379,7 +1379,7 @@
       },
       {
         "name": "read",
-        "description": "Read a UTF-8 text file and return line-numbered content.",
+        "description": "Read a text file and return line-numbered content. UTF-8, GB18030, and GBK encodings are decoded.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1864,7 +1864,7 @@
       },
       {
         "name": "write",
-        "description": "Create or fully replace a UTF-8 text file.",
+        "description": "Create or fully replace a text file. UTF-8, GB18030, and GBK encodings are supported.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1874,7 +1874,7 @@
             },
             "content": {
               "type": "string",
-              "description": "Full UTF-8 text content to write."
+              "description": "Full text content to write."
             },
             "sandbox_permissions": {
               "type": "string",
@@ -1899,7 +1899,7 @@
     [
       {
         "name": "apply_patch",
-        "description": "Create, update, delete, or move UTF-8 text files with one patch; prefer it over multiple edit calls when a change spans several files or separated regions.",
+        "description": "Create, update, delete, or move text files with one patch; UTF-8, GB18030, and GBK encodings are supported; prefer it over multiple edit calls when a change spans several files or separated regions.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2055,7 +2055,7 @@
       },
       {
         "name": "edit",
-        "description": "Edit an existing UTF-8 text file by replacing literal text.",
+        "description": "Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2335,7 +2335,7 @@
       },
       {
         "name": "read",
-        "description": "Read a UTF-8 text file and return line-numbered content.",
+        "description": "Read a text file and return line-numbered content. UTF-8, GB18030, and GBK encodings are decoded.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2820,7 +2820,7 @@
       },
       {
         "name": "write",
-        "description": "Create or fully replace a UTF-8 text file.",
+        "description": "Create or fully replace a text file. UTF-8, GB18030, and GBK encodings are supported.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2830,7 +2830,7 @@
             },
             "content": {
               "type": "string",
-              "description": "Full UTF-8 text content to write."
+              "description": "Full text content to write."
             },
             "sandbox_permissions": {
               "type": "string",
@@ -2855,7 +2855,7 @@
     [
       {
         "name": "apply_patch",
-        "description": "Create, update, delete, or move UTF-8 text files with one patch; prefer it over multiple edit calls when a change spans several files or separated regions.",
+        "description": "Create, update, delete, or move text files with one patch; UTF-8, GB18030, and GBK encodings are supported; prefer it over multiple edit calls when a change spans several files or separated regions.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3011,7 +3011,7 @@
       },
       {
         "name": "edit",
-        "description": "Edit an existing UTF-8 text file by replacing literal text.",
+        "description": "Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3291,7 +3291,7 @@
       },
       {
         "name": "read",
-        "description": "Read a UTF-8 text file and return line-numbered content.",
+        "description": "Read a text file and return line-numbered content. UTF-8, GB18030, and GBK encodings are decoded.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3776,7 +3776,7 @@
       },
       {
         "name": "write",
-        "description": "Create or fully replace a UTF-8 text file.",
+        "description": "Create or fully replace a text file. UTF-8, GB18030, and GBK encodings are supported.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3786,7 +3786,7 @@
             },
             "content": {
               "type": "string",
-              "description": "Full UTF-8 text content to write."
+              "description": "Full text content to write."
             },
             "sandbox_permissions": {
               "type": "string",
@@ -3811,7 +3811,7 @@
     [
       {
         "name": "apply_patch",
-        "description": "Create, update, delete, or move UTF-8 text files with one patch; prefer it over multiple edit calls when a change spans several files or separated regions.",
+        "description": "Create, update, delete, or move text files with one patch; UTF-8, GB18030, and GBK encodings are supported; prefer it over multiple edit calls when a change spans several files or separated regions.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3967,7 +3967,7 @@
       },
       {
         "name": "edit",
-        "description": "Edit an existing UTF-8 text file by replacing literal text.",
+        "description": "Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -4247,7 +4247,7 @@
       },
       {
         "name": "read",
-        "description": "Read a UTF-8 text file and return line-numbered content.",
+        "description": "Read a text file and return line-numbered content. UTF-8, GB18030, and GBK encodings are decoded.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -4732,7 +4732,7 @@
       },
       {
         "name": "write",
-        "description": "Create or fully replace a UTF-8 text file.",
+        "description": "Create or fully replace a text file. UTF-8, GB18030, and GBK encodings are supported.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -4742,7 +4742,7 @@
             },
             "content": {
               "type": "string",
-              "description": "Full UTF-8 text content to write."
+              "description": "Full text content to write."
             },
             "sandbox_permissions": {
               "type": "string",

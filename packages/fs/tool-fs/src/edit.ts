@@ -84,7 +84,7 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
 
   ctx.tools.register(defineTool({
     name: 'edit',
-    description: 'Edit an existing UTF-8 text file by replacing literal text.',
+    description: 'Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported.',
     parameters: {
       file_path: {
         type: 'string', required: true,
