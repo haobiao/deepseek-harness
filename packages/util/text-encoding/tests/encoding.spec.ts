@@ -8,6 +8,7 @@
 import iconv from 'iconv-lite'
 import { describe, expect, it } from 'vitest'
 import {
+  createAutoStreamDecoder,
   createStreamDecoder,
   decodeText,
   detectEncoding,
@@ -16,7 +17,7 @@ import {
   UnencodableTextError,
   trimPartialUtf8,
   wholeCharsetLength,
-} from '../src/encoding/index.ts'
+} from '../src/index.ts'
 
 const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf])
 
@@ -213,6 +214,39 @@ describe('createStreamDecoder', () => {
     const decoder = createStreamDecoder('utf8')
     expect(decoder.push(new Uint8Array([0xe4, 0xb8]))).toBe('')
     expect(() => decoder.end()).toThrow(UndecodableTextError)
+  })
+})
+
+describe('createAutoStreamDecoder', () => {
+  it('emits ASCII before the charset is proven', () => {
+    const decoder = createAutoStreamDecoder()
+    expect(decoder.push(Buffer.from('$ '))).toBe('$ ')
+  })
+
+  it('rejoins a GBK character split across chunks and keeps later ASCII', () => {
+    const text = 'FIND: 参数格式不正确\n> '
+    const bytes = gbk(text)
+    const decoder = createAutoStreamDecoder()
+    let decoded = ''
+    for (let index = 0; index < bytes.length; index += 1) {
+      decoded += decoder.push(bytes.subarray(index, index + 1))
+    }
+    expect(decoded + decoder.end()).toBe(text)
+  })
+
+  it('selects UTF-8 from a split multi-byte character', () => {
+    const text = '中文输出'
+    const bytes = utf8(text)
+    const decoder = createAutoStreamDecoder()
+    let decoded = decoder.push(bytes.subarray(0, 2))
+    decoded += decoder.push(bytes.subarray(2))
+    expect(decoded + decoder.end()).toBe(text)
+  })
+
+  it('holds back only the bytes of an incomplete character', () => {
+    const decoder = createAutoStreamDecoder()
+    expect(decoder.push(Buffer.concat([Buffer.from('$ '), utf8('中').subarray(0, 2)]))).toBe('$ ')
+    expect(decoder.push(utf8('中').subarray(2))).toBe('中')
   })
 })
 

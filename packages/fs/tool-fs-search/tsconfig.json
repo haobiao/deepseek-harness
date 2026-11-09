@@ -42,6 +42,9 @@
       "path": "../../util/timeout"
     },
     {
+      "path": "../../util/text-encoding"
+    },
+    {
       "path": "../../session/working-directory"
     }
   ]

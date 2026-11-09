@@ -9,6 +9,7 @@ import { stat } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { FileSystem, FsInfo, FsTarget, FsVersion } from '@deepseek-ai/dsh-fs'
 import { agentsHomeDisplay, dshHomeDisplay } from '@deepseek-ai/dsh-home-paths'
+import { createAutoStreamDecoder } from '@deepseek-ai/dsh-text-encoding'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { resolveConfig, resolveDiscoveryConfig, type ResolvedConfig, type ResolvedDiscoveryConfig } from './config.ts'
 import { trimmedInstructionDigest } from './digest.ts'
@@ -31,7 +32,7 @@ export interface InstructionFile {
   displayPath: string
 }
 
-/** An instruction file whose UTF-8 content was read successfully. */
+/** An instruction file whose decoded text content was read successfully. */
 export interface LoadedInstructionFile extends InstructionFile {
   content: string
   /** Provider freshness token when the file was loaded through `ctx.fs`. */
@@ -380,8 +381,17 @@ export async function discoverBaselineInstructionFiles(options: DiscoverOptions)
 }
 
 async function* nodeTextChunks(path: string, signal?: AbortSignal): AsyncIterable<string> {
-  const stream = createReadStream(path, { encoding: 'utf8', signal })
-  for await (const chunk of stream) yield String(chunk)
+  // This fallback has no `ctx.fs` decoder, so a checkout whose AGENTS.md is GBK
+  // would otherwise reach the prompt as U+FFFD. Sniff the charset from the byte
+  // stream and hold back a split character until its remaining bytes arrive.
+  const stream = createReadStream(path, { signal })
+  const decoder = createAutoStreamDecoder()
+  for await (const chunk of stream) {
+    const text = decoder.push(chunk as Buffer)
+    if (text.length > 0) yield text
+  }
+  const tail = decoder.end()
+  if (tail.length > 0) yield tail
 }
 
 async function readBounded(

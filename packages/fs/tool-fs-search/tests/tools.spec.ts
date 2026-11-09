@@ -973,11 +973,44 @@ describe('grep results', () => {
     expect(text(result)).toContain('Line 1: aéaéa (line truncated)')
   })
 
-  it('renders a non-UTF-8 line (rg bytes form) as a placeholder instead of failing', async () => {
+  it('decodes a GBK matched line from rg bytes instead of failing', async () => {
     const { ctx, subprocess } = await setup()
-    const record = JSON.stringify({ type: 'match', data: { path: { text: 'bin.dat' }, lines: { bytes: 'AAECww==' }, line_number: 4 } })
+    // '国标中文' encoded as GBK; ripgrep sends base64 `bytes` when it cannot prove UTF-8.
+    const record = JSON.stringify({ type: 'match', data: { path: { text: 'a.txt' }, lines: { bytes: 'ufqx6tbQzsQ=' }, line_number: 4 } })
     subprocess.handler = () => runResult(`${record}\n`)
-    expect(text(await call(ctx, 'grep', { pattern: 'x' }))).toContain('Line 4: (line is not valid UTF-8)')
+    expect(text(await call(ctx, 'grep', { pattern: 'x' }))).toContain('Line 4: 国标中文')
+  })
+
+  it('decodes a GBK filename from rg path bytes', async () => {
+    const { ctx, subprocess } = await setup()
+    // '进度.md' encoded as GBK in the filesystem path.
+    const record = JSON.stringify({ type: 'match', data: { path: { bytes: 'vfi2yC5tZA==' }, lines: { text: 'hit\n' }, line_number: 1 } })
+    subprocess.handler = () => runResult(`${record}\n`)
+    const result = await call(ctx, 'grep', { pattern: 'hit' })
+    if (result.isError) throw new Error('expected grep success')
+    expect(result.value).toEqual({ matches: [{ path: '进度.md', lineNumber: 1, line: 'hit' }] })
+  })
+
+  it('retries a non-ASCII pattern under GB18030 when the default pass finds nothing', async () => {
+    const { ctx, subprocess } = await setup()
+    subprocess.handler = (spec) => {
+      if (!spec.argv.includes('--encoding=gb18030')) return runResult('', { exitCode: 1 })
+      return runResult(`${matchLine('进度.md', 3, '美术给的那包图\n')}\n`)
+    }
+    const result = await call(ctx, 'grep', { pattern: '美术' })
+    if (result.isError) throw new Error('expected grep success')
+    expect(result.value).toEqual({ matches: [{ path: '进度.md', lineNumber: 3, line: '美术给的那包图' }] })
+    expect(subprocess.spawns).toHaveLength(2)
+    expect(subprocess.spawns[1]?.argv).toContain('--encoding=gb18030')
+  })
+
+  it('does not retry an ASCII pattern that found nothing', async () => {
+    const { ctx, subprocess } = await setup()
+    subprocess.handler = () => runResult('', { exitCode: 1 })
+    const result = await call(ctx, 'grep', { pattern: 'absent' })
+    if (result.isError) throw new Error('expected grep success')
+    expect(result.value).toEqual({ matches: [] })
+    expect(subprocess.spawns).toHaveLength(1)
   })
 
   it('strips a CRLF terminator from the matched line text', () => {

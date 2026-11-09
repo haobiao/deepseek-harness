@@ -63,13 +63,13 @@ export {
   UndecodableTextError,
   UnencodableTextError,
   wholeCharsetLength,
-} from './encoding/index.ts'
+} from '@deepseek-ai/dsh-text-encoding'
 export type {
   DetectedTextEncoding,
   LegacyCharset,
   StreamDecoder,
   TextEncoding,
-} from './encoding/index.ts'
+} from '@deepseek-ai/dsh-text-encoding'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

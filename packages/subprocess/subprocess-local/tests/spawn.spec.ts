@@ -582,6 +582,36 @@ describe('OutputCollector', () => {
     expect(third.spillPath).toBeDefined()
   })
 
+  it('decodes GBK output instead of replacing it with U+FFFD', () => {
+    const collector = new OutputCollector(100, 'gbk', undefined)
+    // GBK bytes of "FIND: 参数格式不正确\n" — a Windows console message.
+    collector.push(Buffer.from('46494e443a20b2cecafdb8f1cabdb2bbd5fdc8b70a', 'hex'))
+    expect(collector.readFrom(0).text).toBe('FIND: 参数格式不正确\n')
+    expect(collector.finalize().text).toBe('FIND: 参数格式不正确\n')
+  })
+
+  it('resumes a stream read where a split character begins', () => {
+    const collector = new OutputCollector(100, 'split', undefined)
+    const data = Buffer.from('中文输出', 'utf8')
+    // Stop the writer after the first two bytes of the second character.
+    collector.push(data.subarray(0, 5))
+    const first = collector.readFrom(0)
+    expect(first.text).toBe('中')
+    // The next offset still points at the split character's lead byte.
+    expect(first.nextOffset).toBe(3)
+
+    collector.push(data.subarray(5))
+    const second = collector.readFrom(first.nextOffset)
+    expect(second.text).toBe('文输出')
+  })
+
+  it('drops the continuation bytes a truncated head left behind', () => {
+    const collector = new OutputCollector(4, 'head-cut', undefined)
+    collector.push(Buffer.from('中文', 'utf8'))
+    // Six bytes capped at four keep the window starting inside the first character.
+    expect(collector.finalize().text).toBe('文')
+  })
+
   it('contains close failures and drops the spill path', () => {
     const collector = new OutputCollector(4, 'closefail', spillOptions(100).options)
     collector.push(Buffer.from('aaaa'))

@@ -1,4 +1,5 @@
 /** Bounded output tails and private spill files shared by process providers. */
+import { decodeOutput, decodeOutputChunk } from '@deepseek-ai/dsh-text-encoding'
 import { randomBytes } from 'node:crypto'
 import { closeSync, mkdtempSync, openSync, rmdirSync, unlinkSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
@@ -135,6 +136,8 @@ export class OutputCollector {
   private spillDisabled: boolean
   /** Total bytes ever pushed (not just retained). */
   private total = 0
+  /** Whether the stream has ended, so the retained tail cannot be mid-character. */
+  private sealed = false
 
   /**
    * @param maxBytes - in-memory tail cap in bytes.
@@ -263,9 +266,15 @@ export class OutputCollector {
     const buffer = Buffer.concat(this.chunks)
     const lossy = fromByte < windowStart
     const slice = lossy ? buffer : buffer.subarray(fromByte - windowStart)
+    // A lossy read starts at the retained window's head, whose leading bytes the
+    // cap trimmed away; a running stream's last chunk may also end mid-character.
+    // Decoding under those cut edges keeps GBK/GB18030 output readable instead of
+    // a lossy `toString('utf8')`, and the trailing bytes of a split character
+    // stay unread so the next call resumes at its lead byte.
+    const decoded = decodeOutputChunk(slice, { head: lossy, tail: !this.sealed })
     return {
-      text: slice.toString('utf8'),
-      nextOffset: this.total,
+      text: decoded.text,
+      nextOffset: (lossy ? windowStart : fromByte) + decoded.consumedBytes,
       lossy,
       ...this.spillFile !== undefined ? { spillPath: this.spillFile } : {},
     }
@@ -287,6 +296,7 @@ export class OutputCollector {
    * never point at a still-open file.
    */
   seal(): void {
+    this.sealed = true
     if (this.spillFd === undefined) return
     try {
       closeSync(this.spillFd)
@@ -305,7 +315,9 @@ export class OutputCollector {
   finalize(): CollectedOutput {
     this.seal()
     return {
-      text: Buffer.concat(this.chunks).toString('utf8'),
+      // The retained tail may start mid-character once the cap dropped its head;
+      // its end is the stream's end, so only the head edge needs trimming.
+      text: decodeOutput(Buffer.concat(this.chunks), { head: this.dropped }),
       truncated: this.dropped,
       ...this.spillFile !== undefined ? { spillPath: this.spillFile } : {},
     }

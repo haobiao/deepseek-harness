@@ -10,6 +10,9 @@
       "path": "../fs-patch"
     },
     {
+      "path": "../../util/text-encoding"
+    },
+    {
       "path": "../../../vendor/cosmokit"
     },
     {

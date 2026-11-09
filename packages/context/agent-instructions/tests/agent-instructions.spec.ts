@@ -577,6 +577,28 @@ describe('workspace context instruction discovery', () => {
     }
   })
 
+  it('decodes a GBK instruction file read through the Node fallback', async () => {
+    const root = await tempRepo()
+    const home = await tempRepo()
+    try {
+      const cwd = join(root, 'pkg')
+      await mkdir(join(root, '.git'), { recursive: true })
+      await mkdir(cwd, { recursive: true })
+      // GBK bytes of "项目规则：使用中文。"
+      await writeFile(join(cwd, 'AGENTS.md'), Buffer.from('cfeec4bfb9e6d4f2a3bacab9d3c3d6d0cec4a1a30a', 'hex'))
+
+      pinHarnessHome(home)
+      const loaded = await loadBaselineInstructions({ cwd, maxBytes: 65536 })
+
+      expect(loaded?.text).toContain('项目规则：使用中文。')
+      expect(loaded?.text).not.toContain('�')
+    } finally {
+      vi.unstubAllEnvs()
+      await rm(root, { recursive: true, force: true })
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+
   // POSIX-only fixture: chmod 0 cannot make a file unreadable to its owner on Windows.
   it.skipIf(process.platform === 'win32')('skips a file that becomes unreadable after discovery without failing the request', async () => {
     const root = await tempRepo()
