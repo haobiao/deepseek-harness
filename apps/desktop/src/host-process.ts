@@ -176,6 +176,14 @@ export class DesktopHostProcess {
   }>()
 
   /**
+   * Captured stderr of the running child, including its tail when it crashes
+   * after reporting ready. A crash report attaches it even when the failure
+   * surfaced elsewhere, because the first fatal report is the only one kept.
+   * @returns the retained stderr text, empty while the child is quiet.
+   */
+  get diagnostic(): string { return this.stderr }
+
+  /**
    * @param node - Absolute Electron executable in Node mode.
    * @param runtimeDir - Immutable packages carried by the current application.
    * @param projectDir - Desktop plugin profile and child working directory.

@@ -35,6 +35,42 @@ it('requires the Host authentication exchange and retains only its cookie value'
   await expect(authenticateWebHost('http://127.0.0.1:1234/')).rejects.toThrow('authentication failed')
 })
 
+it('drains the authentication redirect instead of aborting its connection', async () => {
+  let cancelled = false
+  const body = new ReadableStream({
+    start(controller) { controller.close() },
+    cancel() { cancelled = true },
+  })
+  const fetch = vi.fn().mockResolvedValue(new Response(body, {
+    status: 303, headers: { 'set-cookie': 'session=owned; HttpOnly; SameSite=Strict' },
+  }))
+  vi.stubGlobal('fetch', fetch)
+  expect(await authenticateWebHost('http://127.0.0.1:1234/?token=owned')).toBe('session=owned')
+  expect(cancelled).toBe(false)
+})
+
+it('names the authentication request when its connection fails', async () => {
+  const cause = Object.assign(new TypeError('fetch failed'), {
+    cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+  })
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(cause))
+  const failure = authenticateWebHost('http://127.0.0.1:1234/?token=owned')
+  await expect(failure).rejects.toThrow('Desktop Host authentication request failed')
+  await expect(failure).rejects.toMatchObject({ cause })
+})
+
+it('reconnects once when the authentication exchange meets a reset socket', async () => {
+  const reset = Object.assign(new TypeError('fetch failed'), {
+    cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+  })
+  const fetch = vi.fn()
+    .mockRejectedValueOnce(reset)
+    .mockResolvedValueOnce(new Response(null, { status: 303, headers: { 'set-cookie': 'session=owned; HttpOnly; SameSite=Strict' } }))
+  vi.stubGlobal('fetch', fetch)
+  expect(await authenticateWebHost('http://127.0.0.1:1234/?token=owned')).toBe('session=owned')
+  expect(fetch).toHaveBeenCalledTimes(2)
+})
+
 it('forwards upload bytes and cancellation with Host credentials while keeping the response streaming', async () => {
   const body = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('stream')); controller.close() } })
   const fetch = vi.fn().mockResolvedValue(new Response(body, { headers: { 'content-encoding': 'gzip', 'set-cookie': 'private' } }))
