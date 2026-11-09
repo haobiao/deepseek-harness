@@ -6568,8 +6568,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FsDirEntry {\n    name: string;\n    type: \'file\' | \'directory\' | \'other\';\n    target: FsTarget;\n    version?: FsVersion;\n    size?: number;\n}',
   },
   {
+    name: 'FsEditMatchStrategy',
+    declaration: 'export type FsEditMatchStrategy = \'trailing-whitespace\' | \'expanded-tabs\' | \'relative-indent\' | \'blank-line-runs\' | \'punctuation\';',
+  },
+  {
     name: 'FsEditOutcome',
-    declaration: 'export interface FsEditOutcome {\n    version: FsVersion;\n    before: string;\n    after: string;\n}',
+    declaration: 'export interface FsEditOutcome {\n    version: FsVersion;\n    before: string;\n    after: string;\n    matchStrategy?: FsEditMatchStrategy;\n}',
   },
   {
     name: 'FsEditRequest',

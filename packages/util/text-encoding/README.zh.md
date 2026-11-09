@@ -35,6 +35,9 @@ import {
   encodeText,
 } from '@deepseek-ai/dsh-text-encoding'
 
+declare const reader: { read: () => Promise<Uint8Array> }
+declare const captured: Uint8Array
+
 const sample = new Uint8Array(await reader.read())
 const detected = detectEncoding(sample, { fragment: true })
 const text = decodeText(sample.subarray(0, detected.wholeLength), detected.encoding)

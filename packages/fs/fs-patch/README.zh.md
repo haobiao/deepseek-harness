@@ -44,6 +44,9 @@ if (operation?.kind === 'update') {
 ```ts
 import { findLiteralMatches, replaceLiteralMatches } from '@deepseek-ai/dsh-fs-patch'
 
+const source = 'const answer = 42  \n'
+const oldText = 'const answer = 42'
+const newText = 'const answer = 43'
 const { matches, strategy } = findLiteralMatches(source, oldText)
 const after = replaceLiteralMatches(source, matches, newText)
 ```

@@ -128,7 +128,7 @@ it('keeps the hosted packaging route behind an explicit runner opt-in', () => {
   expect(job['runs-on']).toBe("${{ vars.DSH_PACKAGE_HOSTED_RUNNER || 'dsh-win-package-trial' }}")
   const preset = job.steps.find(step => step.name === 'Create hosted packaging preset')!
   expect(preset.if).toBe(hosted)
-  expect(preset.run).toContain("presets/test.env")
+  expect(preset.run).toContain('presets/test.env')
   expect(preset.run).toContain('DSH_PACKAGING_CONFIG_DIR')
   expect(preset.run).not.toContain('${{ inputs.')
   expect(job.steps.find(step => step.name === 'Check original machine archival route')!.if).toBe(machine)

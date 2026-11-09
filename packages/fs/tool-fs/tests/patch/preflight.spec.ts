@@ -43,10 +43,12 @@ it.each([
   const t = await setup()
   await t.file('a', 'old\n')
   const a = t.record('update', 'a')
-  expect(await t.run(patch(`*** Update File: a\n${marker}\n-${pattern}\n+new`, update('a')))).toEqual({ phase: 'preflight', refusals: [
-    { operation: a, failure: { code: 'FS_PATCH_MISMATCH', hunkLine: 3,
-      message: expect.stringContaining(`cannot patch "${a.path}": hunk at patch line 3 (${stage}) does not match — ${preview}`) } },
+  const outcome = await t.run(patch(`*** Update File: a\n${marker}\n-${pattern}\n+new`, update('a')))
+  expect(outcome).toMatchObject({ phase: 'preflight', refusals: [
+    { operation: a, failure: { code: 'FS_PATCH_MISMATCH', hunkLine: 3 } },
   ] })
+  const message = outcome.phase === 'preflight' ? outcome.refusals[0]?.failure.message : undefined
+  expect(message).toContain(`cannot patch "${a.path}": hunk at patch line 3 (${stage}) does not match — ${preview}`)
   expect(await t.bytes('a')).toBe('old\n')
   expect(t.observations).toEqual([])
   expect(await t.editIntent('a')).toEqual({ version: await t.version('a') })
