@@ -7,7 +7,8 @@ import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { FsError } from '@deepseek-ai/dsh-fs'
-import type { FsInfo, FsTarget, FsWriteIntent } from '@deepseek-ai/dsh-fs'
+import type { FsEditMatchStrategy, FsInfo, FsTarget, FsWriteIntent } from '@deepseek-ai/dsh-fs'
+import { findLiteralMatches, formatLiteralMismatch, locateLiteralMismatch, replaceLiteralMatches } from '@deepseek-ai/dsh-fs-patch'
 import { truncateWithoutSplittingSurrogatePair } from '@deepseek-ai/dsh-output-retention'
 import { sandboxDenialMarker } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
@@ -26,7 +27,7 @@ Custom editing tool for viewing, creating and editing files
 * A null placeholder for a parameter unused by the selected command is treated as omitted. Required parameters still need values; omit \`str_replace.new_str\` rather than setting it to null when deleting a match
 
 Notes for using the \`str_replace\` command:
-* The \`old_str\` parameter should match EXACTLY one or more consecutive lines from the original file. Be mindful of whitespaces!
+* The \`old_str\` parameter should match one or more consecutive lines from the original file, preferably exactly. Matching tolerates trailing whitespace, tab width, a uniform indentation difference, differing blank-line runs, and typographic punctuation; the result states when it did.
 * If the \`old_str\` parameter is not unique in the file, the replacement will not be performed. Make sure to include enough context in \`old_str\` to make it unique
 * The \`new_str\` parameter should contain the edited lines that should replace the \`old_str\`
 `.trim()
@@ -41,15 +42,12 @@ function codepointCompare(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-function matchOffsets(content: string, search: string): number[] {
-  const offsets: number[] = []
-  let offset = 0
-  while (true) {
-    const match = content.indexOf(search, offset)
-    if (match < 0) return offsets
-    offsets.push(match)
-    offset = match + search.length
-  }
+const MATCH_NOTES: Record<FsEditMatchStrategy, string> = {
+  'trailing-whitespace': 'ignoring trailing whitespace',
+  'expanded-tabs': 'normalizing tab width',
+  'relative-indent': 'ignoring a uniform indentation difference',
+  'blank-line-runs': 'tolerating a different number of blank lines',
+  punctuation: 'normalizing typographic punctuation',
 }
 
 function lineNumbersAt(content: string, offsets: readonly number[]): number[] {
@@ -294,26 +292,28 @@ async function replaceInFile(
     throw new FsError(`cannot edit "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
   }
   const before = await ctx.fs.readText(target, exec.signal)
-  const offsets = matchOffsets(before, oldValue)
-  const offset = offsets[0]
-  if (offset === undefined) {
+  const found = findLiteralMatches(before, oldValue)
+  if (found.matches.length === 0) {
+    const mismatch = locateLiteralMismatch(before, oldValue)
+    const detail = mismatch === undefined ? ' (the file is empty)' : `; ${formatLiteralMismatch(mismatch)}`
     throw new FsError(
-      `No replacement was performed, old_str \`${oldValue}\` did not appear verbatim in ${target.displayPath}.`,
+      `No replacement was performed, old_str \`${oldValue}\` did not appear verbatim in ${target.displayPath}${detail}`,
       'FS_EDIT_NOT_FOUND',
     )
   }
-  if (offsets.length > 1) {
-    const lines = lineNumbersAt(before, offsets)
+  if (found.matches.length > 1) {
+    const lines = lineNumbersAt(before, found.matches.map(match => match.start))
     throw new FsError(
       `No replacement was performed. Multiple occurrences of old_str \`${oldValue}\` in lines [${lines.join(', ')}]. Please ensure it is unique`,
       'FS_AMBIGUOUS_EDIT',
     )
   }
+  const after = replaceLiteralMatches(before, found.matches, newValue)
   let outcome
   try {
     outcome = await ctx.fs.writeText(
       target,
-      before.slice(0, offset) + newValue + before.slice(offset + oldValue.length),
+      after,
       intent === undefined
         ? { kind: 'replaceIfVersion', version: info.version }
         : { kind: 'replaceIfVersion', version: intent.version },
@@ -324,7 +324,9 @@ async function replaceInFile(
     throw policy.mapError(error, sandboxPolicy)
   }
   ctx.emit('fs/observed', target, { kind: 'present', version: outcome.version }, exec)
-  return `The file ${target.displayPath} has been edited successfully.`
+  return found.strategy === 'exact'
+    ? `The file ${target.displayPath} has been edited successfully.`
+    : `The file ${target.displayPath} has been edited successfully (old_str matched after ${MATCH_NOTES[found.strategy]}).`
 }
 
 async function insertInFile(

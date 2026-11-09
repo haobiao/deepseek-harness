@@ -37,7 +37,10 @@ export const editSchema = z.object({ oldString: z.string(), newString: z.string(
 /** Atomic write observation. */
 export const writeResultSchema = z.object({ operation: z.enum(['create', 'update']), version: z.string(), before: z.string().nullable(), after: z.string() }).strict()
 /** Atomic edit observation. */
-export const editResultSchema = z.object({ version: z.string(), before: z.string(), after: z.string() }).strict()
+export const editResultSchema = z.object({
+  version: z.string(), before: z.string(), after: z.string(),
+  matchStrategy: z.enum(['trailing-whitespace', 'expanded-tabs', 'relative-indent', 'blank-line-runs', 'punctuation']).optional(),
+}).strict()
 /** Parsed patch hunk admitted at the remote JSON boundary. */
 export const hunkSchema = z.object({
   lineNumber: z.number().int().positive(), context: z.string().optional(),

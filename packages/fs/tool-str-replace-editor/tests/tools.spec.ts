@@ -412,6 +412,35 @@ describe('tool-str-replace-editor', () => {
     expect(await readFile(newline, 'utf8')).toBe('one\n\nthree')
   })
 
+  it('tolerates a whitespace difference and discloses the pass', async () => {
+    const { ctx, root, owner } = await setup()
+    const sample = join(root, 'fuzzy.txt')
+    await writeFile(sample, 'one   \ntwo   \n')
+    expect(text(await call(ctx, owner, {
+      command: 'str_replace',
+      path: sample,
+      old_str: 'one\ntwo',
+      new_str: 'X',
+    }))).toBe(`The file ${sample} has been edited successfully (old_str matched after ignoring trailing whitespace).`)
+    expect(await readFile(sample, 'utf8')).toBe('X\n')
+  })
+
+  it('locates the nearest mismatch when old_str is absent', async () => {
+    const { ctx, root, owner } = await setup()
+    const sample = join(root, 'mismatch.txt')
+    await writeFile(sample, 'const value = 1\n')
+    const result = await call(ctx, owner, {
+      command: 'str_replace',
+      path: sample,
+      old_str: 'const value = 2',
+      new_str: 'x',
+    })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain(
+      'nearest candidate is line 1, column 15: expected "const·value·=·2" but found "const·value·=·1"',
+    )
+  })
+
   it('uses old_str-only replacement failures and rejects relative paths', async () => {
     const { ctx, root, owner } = await setup()
     const ambiguous = join(root, 'ambiguous.txt')

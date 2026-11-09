@@ -313,6 +313,7 @@ export class LocalFileSystem extends FileSystem {
         // line-ending restoration is a storage detail the diff ignores.
         before: original.content,
         after: edited.content,
+        ...(edited.matchStrategy === undefined ? {} : { matchStrategy: edited.matchStrategy }),
       }
     })
   }

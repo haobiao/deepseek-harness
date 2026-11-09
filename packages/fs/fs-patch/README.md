@@ -39,6 +39,15 @@ Malformed input throws `PatchParseError` with a one-based `lineNumber` and a cor
 
 `applyHunks` returns `{ ok: true, after }` or `{ ok: false, failure }` without mutating its inputs. A match failure reports the hunk's patch line, the `context` or `oldLines` stage, the sequential search cursor, and the original unmatched pattern; a trailing-empty-line retry still reports the original pattern. Returning rather than throwing lets callers collect match failures across file operations.
 
+`findLiteralMatches` locates literal text with a tolerance ladder: byte-exact (preserving any CRLF spelling in the search), trailing whitespace, tabs expanded to four spaces, a uniform indentation difference on multi-line searches, differing runs of blank lines, then typographic punctuation. It stops at the first pass that matches, never collapses internal spaces or nonuniform indentation, and reports each match in original offsets together with the pass used. `replaceLiteralMatches` splices replacements from the end. `locateLiteralMismatch` and `formatLiteralMismatch` render the nearest differing line and column for a failure message.
+
+```ts
+import { findLiteralMatches, replaceLiteralMatches } from '@deepseek-ai/dsh-fs-patch'
+
+const { matches, strategy } = findLiteralMatches(source, oldText)
+const after = replaceLiteralMatches(source, matches, newText)
+```
+
 <a id="compatibility"></a>
 ## Compatibility
 

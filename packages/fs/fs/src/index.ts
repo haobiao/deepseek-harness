@@ -39,6 +39,7 @@ export type {
   FsDeleteOutcome,
   FsMoveOutcome,
   FsMoveSourceFailure,
+  FsEditMatchStrategy,
   FsEditOutcome,
   FsEditRequest,
   FsDirEntry,

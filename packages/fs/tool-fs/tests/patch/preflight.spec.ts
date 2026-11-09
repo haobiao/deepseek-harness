@@ -45,7 +45,7 @@ it.each([
   const a = t.record('update', 'a')
   expect(await t.run(patch(`*** Update File: a\n${marker}\n-${pattern}\n+new`, update('a')))).toEqual({ phase: 'preflight', refusals: [
     { operation: a, failure: { code: 'FS_PATCH_MISMATCH', hunkLine: 3,
-      message: `cannot patch "${a.path}": hunk at patch line 3 (${stage}) does not match — ${preview}` } },
+      message: expect.stringContaining(`cannot patch "${a.path}": hunk at patch line 3 (${stage}) does not match — ${preview}`) } },
   ] })
   expect(await t.bytes('a')).toBe('old\n')
   expect(t.observations).toEqual([])
@@ -251,7 +251,8 @@ it('still rejects a mismatched hunk without a policy', async () => {
   await t.file('a', 'other\n', false)
   const a = t.record('update', 'a')
   expect(await t.run(patch(update('a')))).toEqual({ phase: 'preflight', refusals: [
-    { operation: a, failure: { code: 'FS_PATCH_MISMATCH', hunkLine: 3, message: `cannot patch "${a.path}": hunk at patch line 3 (oldLines) does not match — old` } },
+    { operation: a, failure: { code: 'FS_PATCH_MISMATCH', hunkLine: 3,
+      message: `cannot patch "${a.path}": hunk at patch line 3 (oldLines) does not match — old; nearest candidate is line 1, column 2: expected "old" but found "other"` } },
   ] })
   expect(await t.bytes('a')).toBe('other\n')
 })

@@ -960,6 +960,34 @@ describe('applyLiteralEdit', () => {
   it('matches across normalized line endings', () => {
     expect(applyLiteralEdit('one\ntwo', 'one\ntwo', 'x', false, 'f').replacements).toBe(1)
   })
+
+  it('reports the tolerant pass when trailing whitespace differs', () => {
+    expect(applyLiteralEdit('one   \ntwo\n', 'one\ntwo', 'x', false, 'f')).toEqual({
+      content: 'x\n',
+      replacements: 1,
+      matchStrategy: 'trailing-whitespace',
+    })
+  })
+
+  it('tolerates a uniform indentation difference and says so', () => {
+    expect(applyLiteralEdit('    if (x) {\n        y()\n    }\n', 'if (x) {\n    y()\n}', 'body', false, 'f')).toEqual({
+      content: 'body\n',
+      replacements: 1,
+      matchStrategy: 'relative-indent',
+    })
+  })
+
+  it('counts fuzzy matches when deciding whether the search is unique', () => {
+    expect(() => applyLiteralEdit('a  \nb\na  \nb\n', 'a\nb', 'X', false, 'f')).toThrow(
+      expect.objectContaining({ code: 'FS_AMBIGUOUS_EDIT' }),
+    )
+  })
+
+  it('locates the nearest mismatch in the not-found message', () => {
+    expect(() => applyLiteralEdit('const value = 1\n', 'const value = 2', 'x', false, 'f')).toThrow(
+      /nearest candidate is line 1, column 15: expected "const·value·=·2" but found "const·value·=·1"/,
+    )
+  })
 })
 
 describe('readForEdit + restoreLineEndings', () => {

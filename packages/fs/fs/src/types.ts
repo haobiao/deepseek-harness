@@ -143,9 +143,25 @@ export interface FsWriteOutcome {
   after: string
 }
 
+/**
+ * The tolerance that let an edit match after line-ending normalization, when the
+ * text was not an exact literal. A backend may report any of these values; the
+ * `exact` case leaves the outcome field absent.
+ */
+export type FsEditMatchStrategy =
+  | 'trailing-whitespace'
+  | 'expanded-tabs'
+  | 'relative-indent'
+  | 'blank-line-runs'
+  | 'punctuation'
+
 /** A literal-replacement edit request. */
 export interface FsEditRequest {
-  /** Literal non-empty text to replace. Must match exactly (after line-ending normalization). */
+  /**
+   * Non-empty text to replace. An exact literal match is preferred; failing that a
+   * backend may match through trailing whitespace, tab width, relative indentation,
+   * blank-line runs, or typographic punctuation, and report the pass it used.
+   */
   oldString: string
   /** Literal replacement text. An empty string deletes the matched text. */
   newString: string
@@ -165,6 +181,11 @@ export interface FsEditOutcome {
   before: string
   /** The file's content AFTER the edit. */
   after: string
+  /**
+   * Set only when `oldString` did not match literally and a tolerant pass was used;
+   * absent for an exact match.
+   */
+  matchStrategy?: FsEditMatchStrategy
 }
 
 /** Outcome of a guarded delete; the bounded basis follows FsWriteOutcome.before. */

@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FsInfo, FsTarget, FsTargetKey } from '@deepseek-ai/dsh-fs'
-import { applyHunks } from '@deepseek-ai/dsh-fs-patch'
+import { applyHunks, formatLiteralMismatch, locateLiteralMismatch } from '@deepseek-ai/dsh-fs-patch'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
@@ -113,13 +113,16 @@ class Preflight {
           await this.destination(await this.state(operation.destination), operation.destination)
           this.failurePath = operation.target.displayPath
         }
-        const result = applyHunks(await this.content(state, operation.target), operation.hunks)
+        const content = await this.content(state, operation.target)
+        const result = applyHunks(content, operation.hunks)
         if (!result.ok) {
           const first = result.failure.pattern.slice(0, 1).join('')
           const characters = Array.from(first)
           const preview = characters.length > 80 ? `${characters.slice(0, 80).join('')}…` : first
+          const mismatch = locateLiteralMismatch(content, result.failure.pattern.join('\n'))
+          const detail = mismatch === undefined ? '' : `; ${formatLiteralMismatch(mismatch)}`
           return { code: 'FS_PATCH_MISMATCH', hunkLine: result.failure.hunkLineNumber,
-            message: `cannot patch "${operation.target.displayPath}": hunk at patch line ${result.failure.hunkLineNumber} (${result.failure.stage}) does not match — ${preview}` }
+            message: `cannot patch "${operation.target.displayPath}": hunk at patch line ${result.failure.hunkLineNumber} (${result.failure.stage}) does not match — ${preview}${detail}` }
         }
         if (operation.kind === 'move') {
           this.publish(operation.destination, result.after)
