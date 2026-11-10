@@ -1,0 +1,489 @@
+name: Publish unsigned Windows release
+
+# Publishes the unsigned Windows installer produced by windows-package.yml to
+# GitHub Releases.
+#
+# One product version owns exactly one Release: the tag is fixed to
+# `win-unsigned-v<productVersion>`, so GitHub itself rejects a second Release
+# for the same version. Later builds of the same version replace the assets in
+# place, which keeps the Release URL stable.
+#
+# Triggered manually, or reused by nightly-upstream-sync.yml via workflow_call
+# right after a successful packaging run.
+#
+# A manual dispatch always compiles a fresh installer on master first: it never
+# reuses an older artifact, because publishing a historical build would ship a
+# commit nobody selected. The reusable path receives the run id of the build
+# the caller just finished.
+on:
+  workflow_dispatch:
+    inputs:
+      preset:
+        description: '打包环境（透传给 windows-package.yml）'
+        type: choice
+        options: [test, production]
+        default: test
+        required: true
+      update_channel:
+        description: '升级通道（透传给 windows-package.yml）'
+        type: choice
+        options: [nightly, stable]
+        default: nightly
+        required: true
+      compression_level:
+        description: '安装器压缩等级（透传给 windows-package.yml）'
+        type: choice
+        options: ['3', '7']
+        default: '7'
+        required: true
+      replace_assets:
+        description: '同版本 Release 已存在时替换安装包资产'
+        type: boolean
+        required: false
+        default: true
+      draft:
+        description: '创建为草稿 Release'
+        type: boolean
+        required: false
+        default: false
+      prerelease:
+        description: '标记为预发布'
+        type: boolean
+        required: false
+        default: true
+      dry_run:
+        description: '只做校验并打印结果，不创建或修改 Release'
+        type: boolean
+        required: false
+        default: false
+  workflow_call:
+    inputs:
+      package_run_id:
+        description: '打包运行 ID'
+        type: string
+        required: true
+      package_run_attempt:
+        description: '打包尝试次数；留空取该运行的最新尝试'
+        type: string
+        required: false
+        default: ''
+      replace_assets:
+        description: '同版本 Release 已存在时替换安装包资产'
+        type: boolean
+        required: false
+        default: true
+      draft:
+        description: '创建为草稿 Release'
+        type: boolean
+        required: false
+        default: false
+      prerelease:
+        description: '标记为预发布'
+        type: boolean
+        required: false
+        default: true
+      dry_run:
+        description: '只做校验并打印结果，不创建或修改 Release'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: publish-unsigned-release
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    # Manual dispatch waits for the packaging build it triggers (up to two
+    # hours), plus time in the packaging queue.
+    timeout-minutes: 300
+    permissions:
+      contents: read
+      # Only this job dispatches the packaging workflow; publishing happens in
+      # the publish job, which is the only job allowed to write contents.
+      actions: write
+    outputs:
+      artifact-id: ${{ steps.run.outputs.artifact-id }}
+      package-run-id: ${{ steps.run.outputs.package-run-id }}
+      attempt: ${{ steps.run.outputs.attempt }}
+      commit: ${{ steps.run.outputs.commit }}
+      product-version: ${{ steps.version.outputs.product-version }}
+      tag: ${{ steps.version.outputs.tag }}
+      run-url: ${{ steps.run.outputs.run-url }}
+    steps:
+      # A Release built from a branch is not attributable to a versioned
+      # source; require master, exactly like the other publication workflows.
+      - name: Require master dispatch
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/master" ]; then
+            echo "::error::unsigned publication must be dispatched from master (got $GITHUB_REF)"
+            exit 1
+          fi
+
+      - name: Build or resolve the packaging run
+        id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER: ${{ github.event_name }}
+          REQUESTED_RUN_ID: ${{ inputs.package_run_id }}
+          REQUESTED_ATTEMPT: ${{ inputs.package_run_attempt }}
+          PACKAGE_PRESET: ${{ inputs.preset || 'test' }}
+          PACKAGE_CHANNEL: ${{ inputs.update_channel || 'nightly' }}
+          PACKAGE_COMPRESSION: ${{ inputs.compression_level || '7' }}
+        run: |
+          set -euo pipefail
+          run_id="$REQUESTED_RUN_ID"
+          attempt="$REQUESTED_ATTEMPT"
+
+          if [ "$TRIGGER" = "workflow_dispatch" ]; then
+            # Manual publication compiles its own installer. Reusing an older
+            # run would publish whatever commit happened to be lying around.
+            before=$(gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow windows-package.yml --limit 1 \
+              --json databaseId --jq '.[0].databaseId // 0')
+            started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            gh workflow run windows-package.yml \
+              --repo "$GITHUB_REPOSITORY" --ref master \
+              -f source_ref=master \
+              -f preset="$PACKAGE_PRESET" \
+              -f update_channel="$PACKAGE_CHANNEL" \
+              -f version_mode=default \
+              -f compression_level="$PACKAGE_COMPRESSION" \
+              -f signing=unsigned
+            echo "dispatched unsigned packaging on master"
+
+            # The dispatch API returns no run id: poll for the run that this
+            # dispatch created (newer than everything seen before, on master).
+            run_id=""
+            for _ in $(seq 1 30); do
+              sleep 5
+              run_id=$(gh run list --repo "$GITHUB_REPOSITORY" \
+                --workflow windows-package.yml --event workflow_dispatch \
+                --limit 10 --json databaseId,createdAt,headBranch \
+                --jq "map(select(.databaseId > ${before:-0} and .headBranch == \"master\" and .createdAt >= \"$started\"))[0].databaseId // empty")
+              [ -n "$run_id" ] && break
+            done
+            if ! [[ "$run_id" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::the dispatched packaging run never appeared"
+              exit 1
+            fi
+            echo "packaging run: $run_id"
+            # Fails the job when the build fails; the build itself is capped
+            # at 120 minutes by windows-package.yml.
+            gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+          fi
+
+          if ! [[ "$run_id" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::no packaging run to publish"
+            exit 1
+          fi
+
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")
+          path=$(jq -r '.path' <<<"$run")
+          event=$(jq -r '.event' <<<"$run")
+          head_repo=$(jq -r '.head_repository.full_name // empty' <<<"$run")
+          branch=$(jq -r '.head_branch // empty' <<<"$run")
+          commit=$(jq -r '.head_sha' <<<"$run")
+
+          if [ "$path" != ".github/workflows/windows-package.yml" ]; then
+            echo "::error::run $run_id is not the Windows packaging workflow (path=$path)"
+            exit 1
+          fi
+          if [ "$event" != "workflow_dispatch" ]; then
+            echo "::error::run $run_id was not started by workflow_dispatch (event=$event)"
+            exit 1
+          fi
+          if [ "$head_repo" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::run $run_id belongs to $head_repo, not $GITHUB_REPOSITORY"
+            exit 1
+          fi
+          case "$branch" in
+            master|dsh-v*) ;;
+            *)
+              echo "::error::run $run_id was built from '$branch'; only master or dsh-v* qualify"
+              exit 1
+              ;;
+          esac
+
+          attempt="${REQUESTED_ATTEMPT:-$(jq -r '.run_attempt' <<<"$run")}"
+          if ! [[ "$attempt" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::invalid attempt '$attempt'"
+            exit 1
+          fi
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$attempt" --jq '.conclusion')
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::packaging run $run_id attempt $attempt concluded '$conclusion'"
+            exit 1
+          fi
+
+          # Exactly one unexpired hosted unsigned artifact for that attempt.
+          # The naming contract comes from windows-package.yml; matching on
+          # the suffix prevents picking up another attempt's artifacts.
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" \
+            | jq --arg id "$run_id" --arg attempt "$attempt" '
+                [.[].artifacts[]
+                 | select(.expired == false)
+                 | select(.name | startswith("windows-x64-unsigned-hosted-"))
+                 | select(.name | endswith("-\($id)-\($attempt)"))]' \
+            > "$RUNNER_TEMP/unsigned-artifacts.json"
+          count=$(jq 'length' "$RUNNER_TEMP/unsigned-artifacts.json")
+          if [ "$count" -ne 1 ]; then
+            jq -r '.[].name' "$RUNNER_TEMP/unsigned-artifacts.json" | sed 's/^/  found: /' || true
+            echo "::error::expected exactly one unsigned hosted artifact for run $run_id attempt $attempt, found $count (expired after 14 days?)"
+            exit 1
+          fi
+
+          echo "artifact-id=$(jq -r '.[0].id' "$RUNNER_TEMP/unsigned-artifacts.json")" >> "$GITHUB_OUTPUT"
+          echo "artifact-name=$(jq -r '.[0].name' "$RUNNER_TEMP/unsigned-artifacts.json")" >> "$GITHUB_OUTPUT"
+          echo "package-run-id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "attempt=$attempt" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "run-url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$attempt" >> "$GITHUB_OUTPUT"
+
+      # The product version is authoritative at the packaged commit, never the
+      # file name of the artifact or the branch head of the publish run.
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ steps.run.outputs.commit }}
+          persist-credentials: false
+          sparse-checkout: |
+            package.json
+            apps/desktop/package.json
+          sparse-checkout-cone-mode: false
+
+      - name: Derive product version and fixed release tag
+        id: version
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const version = (path) => JSON.parse(fs.readFileSync(path, 'utf8')).version
+          const desktop = version('apps/desktop/package.json')
+          const root = version('package.json')
+          if (desktop !== root) {
+            throw new Error(`root and desktop versions differ: ${root} vs ${desktop}`)
+          }
+          if (!/^[0-9A-Za-z][0-9A-Za-z._-]*$/.test(desktop)) {
+            throw new Error(`unsupported product version: ${desktop}`)
+          }
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `product-version=${desktop}\ntag=win-unsigned-v${desktop}\n`,
+          )
+          NODE
+
+      # One Release per version, including drafts and equivalent tag spellings.
+      - name: Reject a conflicting release for the same version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          PRODUCT_VERSION: ${{ steps.version.outputs.product-version }}
+          REPLACE_ASSETS: ${{ inputs.replace_assets }}
+        run: |
+          set -euo pipefail
+          releases=$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/releases?per_page=100")
+          own=$(jq -r --arg tag "$TAG" \
+            '[.[][] | select(.tag_name == $tag)] | .[0].html_url // empty' <<<"$releases")
+          # A release outside this family (for example a signed dsh-v* or v*
+          # release) still owns the version: replacing its assets would delete
+          # the installer it published, so refuse instead.
+          conflict=$(jq -r --arg version "$PRODUCT_VERSION" --arg tag "$TAG" \
+            '[.[][] | select(.tag_name != $tag)
+               | select((.tag_name | sub("^win-unsigned-"; "") | sub("^v"; "")) == $version)]
+             | .[0].tag_name // empty' <<<"$releases")
+
+          if [ -n "$conflict" ]; then
+            echo "::error::release $conflict already owns version $PRODUCT_VERSION outside the win-unsigned family; bump the product version"
+            exit 1
+          fi
+          if [ -n "$own" ]; then
+            if [ "$REPLACE_ASSETS" != "true" ]; then
+              echo "::error::release for version $PRODUCT_VERSION already exists at $own; enable replace_assets to update it in place"
+              exit 1
+            fi
+            echo "::notice::replacing installer assets of existing release $own"
+          elif gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::tag $TAG exists without a release; delete the tag or bump the product version"
+            exit 1
+          fi
+
+          {
+            echo "### 未签名 Windows 发布预检"
+            echo ""
+            echo "- 产品版本：$PRODUCT_VERSION"
+            echo "- Release tag：\`$TAG\`"
+            echo "- 打包运行：${{ steps.run.outputs.package-run-id }} (attempt ${{ steps.run.outputs.attempt }})"
+            echo "- 产物：\`${{ steps.run.outputs.artifact-name }}\`"
+            echo "- 已有同版本 Release：${own:-无}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: resolve
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
+      PRODUCT_VERSION: ${{ needs.resolve.outputs.product-version }}
+      PACKAGE_RUN_ID: ${{ needs.resolve.outputs.package-run-id }}
+      PACKAGE_ATTEMPT: ${{ needs.resolve.outputs.attempt }}
+      PACKAGE_COMMIT: ${{ needs.resolve.outputs.commit }}
+      PACKAGE_RUN_URL: ${{ needs.resolve.outputs.run-url }}
+      REPLACE_ASSETS: ${{ inputs.replace_assets }}
+      DRAFT: ${{ inputs.draft }}
+      PRERELEASE: ${{ inputs.prerelease }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          artifact-ids: ${{ needs.resolve.outputs.artifact-id }}
+          run-id: ${{ needs.resolve.outputs.package-run-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/unsigned-release
+
+      - name: Verify installer is an unsigned Windows build
+        id: verify
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'unsigned-release'
+          $exe = @(Get-ChildItem -LiteralPath $dir -File | Where-Object Extension -eq '.exe')
+          if ($exe.Count -ne 1) {
+            throw "Expected exactly one installer in the artifact, found $($exe.Count)"
+          }
+          $name = $exe[0].Name
+          if ($name -notmatch '^deepseek-harness-(?<version>.+)-win-x64-unsigned\.exe$') {
+            throw "Artifact is not an unsigned Windows installer: $name"
+          }
+          $buildVersion = $Matches['version']
+          if ($buildVersion -ne $env:PRODUCT_VERSION -and
+              -not $buildVersion.StartsWith($env:PRODUCT_VERSION + '.')) {
+            throw "Installer version $buildVersion does not extend product version $($env:PRODUCT_VERSION)"
+          }
+          $blockmap = Join-Path $dir ($name + '.blockmap')
+          if (-not (Test-Path -LiteralPath $blockmap)) {
+            throw "Missing blockmap for $name"
+          }
+          if ($exe[0].Length -lt 20MB) {
+            throw "Installer is unexpectedly small: $($exe[0].Length) bytes"
+          }
+          $signature = Get-AuthenticodeSignature -LiteralPath $exe[0].FullName
+          if ($signature.Status -ne 'NotSigned') {
+            throw "Expected an unsigned installer, found signature status $($signature.Status)"
+          }
+          $hash = (Get-FileHash -LiteralPath $exe[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksums = Join-Path $dir 'SHA256SUMS'
+          "$hash  $name" | Set-Content -LiteralPath $checksums -Encoding ascii
+
+          "exe=$($exe[0].FullName)" >> $env:GITHUB_OUTPUT
+          "blockmap=$blockmap" >> $env:GITHUB_OUTPUT
+          "checksums=$checksums" >> $env:GITHUB_OUTPUT
+          "exe-name=$name" >> $env:GITHUB_OUTPUT
+          "build-version=$buildVersion" >> $env:GITHUB_OUTPUT
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+
+      - name: Prepare release notes
+        id: notes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          @"
+          Windows 未签名安装包（内部测试）。
+
+          - 产品版本：$($env:PRODUCT_VERSION)
+          - 构建版本：${{ steps.verify.outputs.build-version }}
+          - 打包运行：[$($env:PACKAGE_RUN_ID) attempt $($env:PACKAGE_ATTEMPT)]($($env:PACKAGE_RUN_URL))
+          - 源码提交：$($env:PACKAGE_COMMIT)
+          - SHA256：${{ steps.verify.outputs.sha256 }}
+          - 签名状态：未签名（Authenticode NotSigned）
+
+          未签名包会触发 Windows SmartScreen 警告，也不参与自动更新，请从本 Release 手动下载安装。
+          同一产品版本固定一个 Release，后续构建会替换这里的主安装包。
+          "@ | Set-Content -LiteralPath $notes -Encoding utf8
+          "notes=$notes" >> $env:GITHUB_OUTPUT
+
+      - name: Create or replace the versioned release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EXE_PATH: ${{ steps.verify.outputs.exe }}
+          BLOCKMAP_PATH: ${{ steps.verify.outputs.blockmap }}
+          CHECKSUMS_PATH: ${{ steps.verify.outputs.checksums }}
+          EXE_NAME: ${{ steps.verify.outputs.exe-name }}
+          NOTES_PATH: ${{ steps.notes.outputs.notes }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $title = "Windows 未签名 v$($env:PRODUCT_VERSION)"
+
+          if ($env:DRY_RUN -eq 'true') {
+            Write-Output "dry run: verified $($env:EXE_NAME); would publish as $($env:TAG)"
+            "url=" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          $exists = $true
+          gh release view $env:TAG --json tagName *> $null
+          if ($LASTEXITCODE -ne 0) { $exists = $false }
+
+          if ($exists) {
+            if ($env:REPLACE_ASSETS -ne 'true') {
+              throw "Release $($env:TAG) already exists; enable replace_assets to update it in place"
+            }
+            # Upload first, delete stale assets afterwards: the release never
+            # points at zero installers while being refreshed.
+            gh release upload $env:TAG $env:EXE_PATH $env:BLOCKMAP_PATH $env:CHECKSUMS_PATH --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Uploading replacement assets failed' }
+
+            $expected = @($env:EXE_NAME, "$($env:EXE_NAME).blockmap", 'SHA256SUMS')
+            $stale = gh release view $env:TAG --json assets --jq '.assets[].name' |
+              Where-Object { $_ -match '\.exe(\.blockmap)?$' -and $_ -notin $expected }
+            foreach ($asset in $stale) {
+              gh release delete-asset $env:TAG $asset --yes
+              if ($LASTEXITCODE -ne 0) { throw "Deleting stale asset $asset failed" }
+            }
+
+            gh release edit $env:TAG --title $title --notes-file $env:NOTES_PATH
+            if ($LASTEXITCODE -ne 0) { throw 'Updating release metadata failed' }
+          } else {
+            $arguments = @(
+              'release', 'create', $env:TAG,
+              '--target', $env:PACKAGE_COMMIT,
+              '--title', $title,
+              '--notes-file', $env:NOTES_PATH
+            )
+            if ($env:DRAFT -eq 'true') { $arguments += '--draft' }
+            if ($env:PRERELEASE -eq 'true') { $arguments += '--prerelease' }
+            $arguments += @($env:EXE_PATH, $env:BLOCKMAP_PATH, $env:CHECKSUMS_PATH)
+            gh @arguments
+            if ($LASTEXITCODE -ne 0) { throw 'Creating the release failed' }
+          }
+
+          $url = gh release view $env:TAG --json url --jq '.url'
+          if ($LASTEXITCODE -ne 0) { throw 'Reading the release URL failed' }
+          "url=$url" >> $env:GITHUB_OUTPUT
+
+      - name: Summarize publication
+        run: |
+          @"
+          ### 未签名 Windows Release
+
+          - 版本：$($env:PRODUCT_VERSION)
+          - tag：$($env:TAG)
+          - 资产：${{ steps.verify.outputs.exe-name }}
+          - Release：${{ steps.release.outputs.url }}
+          - 模式：${{ inputs.dry_run && 'dry-run（未写入）' || (inputs.replace_assets && '创建或原地替换资产' || '仅创建') }}
+          - 打包运行：[$($env:PACKAGE_RUN_ID)]($($env:PACKAGE_RUN_URL))
+          "@ >> $env:GITHUB_STEP_SUMMARY

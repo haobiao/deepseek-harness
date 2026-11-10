@@ -141,6 +141,8 @@ jobs:
     if: needs.sync.outputs.changed == 'true' || inputs.force_package == true
     runs-on: ubuntu-24.04
     timeout-minutes: 240
+    outputs:
+      run_id: ${{ steps.watch.outputs.run_id }}
     env:
       PACKAGE_PRESET: ${{ inputs.preset || 'test' }}
       PACKAGE_SIGNING: ${{ inputs.signing || 'unsigned' }}
@@ -162,6 +164,7 @@ jobs:
             -f signing="$PACKAGE_SIGNING"
 
       - name: Wait for packaging result
+        id: watch
         env:
           # Default token on purpose: this step only reads run status, and it
           # must not turn a successful build into a red run if SYNC_TOKEN is
@@ -180,9 +183,31 @@ jobs:
           fi
           echo "packaging run: $run_id"
           gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+  # Publish the freshly built unsigned installer to GitHub Releases. Reusing
+  # the publication workflow keeps the one-Release-per-version tag rule in a
+  # single place; a manual dispatch of that workflow remains the escape hatch.
+  publish:
+    needs: [sync, package]
+    if: >-
+      needs.package.result == 'success' &&
+      needs.package.outputs.run_id != '' &&
+      (inputs.signing || 'unsigned') == 'unsigned'
+    permissions:
+      contents: write
+      # write because the reusable workflow may dispatch a package run; the
+      # caller must grant every permission the called jobs request.
+      actions: write
+    uses: ./.github/workflows/publish-unsigned-release.yml
+    with:
+      package_run_id: ${{ needs.package.outputs.run_id }}
+      replace_assets: true
+      draft: false
+      prerelease: true
 
   notify:
-    needs: [sync, package]
+    needs: [sync, package, publish]
     if: failure()
     runs-on: ubuntu-24.04
     steps:
@@ -197,7 +222,7 @@ jobs:
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
             --search "$title in:title" --json number --jq '.[0].number // empty')
-          body="失败运行：$run_url"$'\n\n'"请检查 sync / package 哪个环节失败；若是合并冲突，需要人工解决。"
+          body="失败运行：$run_url"$'\n\n'"请检查 sync / package / publish 哪个环节失败；若是合并冲突，需要人工解决。"
           if [ -z "$existing" ]; then
             gh issue create --repo "$GITHUB_REPOSITORY" \
               --title "$title" --body "$body"
