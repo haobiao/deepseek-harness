@@ -37,7 +37,7 @@ jobs:
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "dsh-win-ci", "windows"]')
           || vars.DSH_CI_HOSTED_FALLBACK_WINDOWS
-          || 'dsh-windows-2025-16core' }}
+          || 'windows-latest' }}
     name: windows node 24 / build & observational
     timeout-minutes: 60
     env:
@@ -127,7 +127,7 @@ jobs:
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "dsh-win-ci", "windows"]')
           || vars.DSH_CI_HOSTED_FALLBACK_WINDOWS
-          || 'dsh-windows-2025-16core' }}
+          || 'windows-latest' }}
     name: windows node 24 / coverage
     timeout-minutes: 120
     env:
@@ -206,7 +206,7 @@ jobs:
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "dsh-win-ci", "windows"]')
           || vars.DSH_CI_HOSTED_FALLBACK_WINDOWS
-          || 'dsh-windows-2025-16core' }}
+          || 'windows-latest' }}
     name: windows node 24 / native tests
     timeout-minutes: 60
     steps:

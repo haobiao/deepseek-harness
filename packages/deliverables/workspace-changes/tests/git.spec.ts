@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
-import { GitRunner, blobText, diffTrees, ignoredPaths, locateGitWorkspace, snapshotTree, treeBlob } from '../src/git.ts'
+import { GitRunner, blobBytes, diffTrees, ignoredPaths, locateGitWorkspace, snapshotTree, treeBlob } from '../src/git.ts'
 import { TurnRecorder } from '../src/recorder.ts'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { git, scratchDir, startTurn, toolCall } from './support.ts'
@@ -56,6 +56,20 @@ describe('GitRunner', () => {
     const ok = await quick.run(['--version'], { cwd, signal })
     expect(ok.exitCode).toBe(0)
     expect(ok.stdout).toContain('git version')
+  })
+
+  it('reports timeouts and aborts for raw-byte reads too, and caps what it keeps', async () => {
+    const cwd = await scratchDir('dsh-git-bytes-', cleanups)
+    const { git: slow } = await runner({ timeoutMs: 1, outputMaxBytes: 1024 })
+    await expect(slow.runBytes(['--version'], { cwd, signal })).rejects.toThrow('timed out after 1ms')
+    const { git: quick } = await runner()
+    const aborted = new AbortController()
+    setTimeout(() => { aborted.abort() }, 0)
+    await expect(quick.runBytes(['--version'], { cwd, signal: aborted.signal })).rejects.toThrow('git --version was aborted')
+    const capped = await quick.runBytes(['--version'], { cwd, signal, maxBytes: 4 })
+    expect(capped.truncated).toBe(true)
+    expect(capped.bytes.length).toBe(4)
+    expect(capped.exitCode).toBe(0)
   })
 })
 
@@ -145,7 +159,7 @@ describe('repository edge cases', () => {
   })
 })
 
-describe('treeBlob and blobText', () => {
+describe('treeBlob and blobBytes', () => {
   it('locates a blob by its literal path, sizes it, reads it, and reports trees and missing paths as null', async () => {
     const cwd = await scratchDir('dsh-git-blob-', cleanups)
     git(cwd, 'init', '-q', '-b', 'main')
@@ -159,10 +173,25 @@ describe('treeBlob and blobText', () => {
     const tree = await snapshotTree(runnerGit, workspace, signal)
     const bracket = await treeBlob(runnerGit, workspace, tree, 'a[1].txt', signal)
     expect(bracket).toEqual({ oid: git(cwd, 'hash-object', 'a[1].txt').trim(), size: 8 })
-    expect(await blobText(runnerGit, workspace, bracket!.oid, 64, signal)).toBe('bracket\n')
+    expect(await blobBytes(runnerGit, workspace, bracket!.oid, 64, signal)).toEqual(Buffer.from('bracket\n'))
     expect(await treeBlob(runnerGit, workspace, tree, 'dir', signal)).toBeNull()
     expect(await treeBlob(runnerGit, workspace, tree, 'missing.txt', signal)).toBeNull()
     expect(await treeBlob(runnerGit, workspace, tree, 'dir/inner.txt', signal)).toMatchObject({ size: 6 })
+  })
+
+  it('returns a GBK blob as its stored bytes rather than lossy UTF-8 text', async () => {
+    const cwd = await scratchDir('dsh-git-gbk-', cleanups)
+    git(cwd, 'init', '-q', '-b', 'main')
+    // "你好\n" in GBK: neither byte pair is valid UTF-8.
+    const stored = Buffer.from([0xc4, 0xe3, 0xba, 0xc3, 0x0a])
+    await writeFile(join(cwd, 'gbk.txt'), stored)
+    const { git: runnerGit } = await runner()
+    const workspace = await locateGitWorkspace(runnerGit, cwd, objectsIn(await scratchDir('dsh-git-store-', cleanups)), signal)
+    if (workspace === null) throw new Error('repository not located')
+    const tree = await snapshotTree(runnerGit, workspace, signal)
+    const blob = await treeBlob(runnerGit, workspace, tree, 'gbk.txt', signal)
+    expect(await blobBytes(runnerGit, workspace, blob!.oid, 64, signal)).toEqual(stored)
+    await expect(blobBytes(runnerGit, workspace, blob!.oid, 4, signal)).rejects.toThrow('exceeds 4 bytes')
   })
 })
 

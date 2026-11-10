@@ -170,7 +170,7 @@ class CreateGoalOutput2(TypedDict):
 class EditArgs(TypedDict):
     # Path to edit, resolved by the filesystem backend. Provide `file_path` before `old_string` and `new_string` in the arguments.
     file_path: str
-    # Literal text to replace.
+    # Literal text to replace. Prefer an exact quote; trailing whitespace, tab width, uniform or per-line indentation differences, blank-line runs, and typographic punctuation are tolerated, and the result states when a tolerant match was used.
     old_string: str
     # Literal replacement text. Use an empty string to delete the match.
     new_string: str
@@ -187,6 +187,8 @@ class EditOutput(TypedDict):
     path: str
     before: str
     after: str
+    # Present only when old_string matched after a whitespace or punctuation normalization.
+    matchStrategy: NotRequired[str]
 
 class GetGoalOutput1(TypedDict):
     goal: None
@@ -521,7 +523,7 @@ class WorkingDirectoryOutput(TypedDict):
 class WriteArgs(TypedDict):
     # Path to write, resolved by the filesystem backend. Provide `file_path` before `content` in the arguments.
     file_path: str
-    # Full UTF-8 text content to write.
+    # Full text content to write.
     content: str
     # The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval.
     sandbox_permissions: NotRequired[Literal["workspace-write", "danger-full-access"]]
@@ -538,13 +540,13 @@ class WriteOutput(TypedDict):
 
 class Tools(Protocol):
     async def apply_patch(self, args: ApplyPatchArgs) -> ApplyPatchOutput:
-        """Create, update, delete, or move UTF-8 text files with one patch; prefer it over multiple edit calls when a change spans several files or separated regions."""
+        """Create, update, delete, or move text files with one patch; UTF-8, GB18030, and GBK encodings are supported; prefer it over multiple edit calls when a change spans several files or separated regions."""
     async def bash(self, args: BashArgs) -> BashOutput1 | BashOutput2 | BashOutput3:
         """Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs in a fresh shell; pass `workdir` instead of using `cd`. Managed `$DSH_*` variables expose current harness environment facts. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Provide `description` before `command` in the arguments. Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. An unset variable expands to an empty string, so guard variables in such paths with `${VAR:?}`. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way."""
     async def create_goal(self, args: CreateGoalArgs) -> CreateGoalOutput1 | CreateGoalOutput2:
         """Create a persisted goal that keeps this session working across automatic continuation rounds. Use it when the direct human request is a long-running objective, even if the user did not say \"goal\"; not for single-turn work."""
     async def edit(self, args: EditArgs) -> EditOutput:
-        """Edit an existing UTF-8 text file by replacing literal text."""
+        """Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported."""
     async def get_goal(self, args: dict[str, Any]) -> GetGoalOutput1 | GetGoalOutput2:
         """Read the current session goal, including the id and revision that update_goal requires."""
     async def glob(self, args: GlobArgs) -> GlobOutput:
@@ -562,7 +564,7 @@ class Tools(Protocol):
     async def list_agents(self, args: dict[str, Any]) -> list[ListAgentsOutput]:
         """List your entire subagent tree: the root agent and all reachable continuable descendants, including yourself. Rows carry names, descriptions, and status. A descendant's name is its path from the root, such as reviewer/checker. You can message any other agent in the subagent tree. running means it is working; inactive means no turn is executing; it does not indicate task completion, success, or failure. corrupt, unsupported, or unavailable means this row's own descendants could not be read; the row itself is still a member you can message. While you remain active, you will be notified when a direct child finishes; there is no need to keep checking its status. Use send_message to continue the conversation."""
     async def read(self, args: ReadArgs) -> ReadOutput:
-        """Read a UTF-8 text file and return line-numbered content."""
+        """Read a text file and return line-numbered content. UTF-8, GB18030, and GBK encodings are decoded."""
     async def read_image(self, args: ReadImageArgs) -> ReadImageOutput:
         """Read a PNG/JPEG/WebP/GIF file and return the image itself. Large images are downscaled automatically; do not install image libraries or create thumbnails to inspect an image."""
     async def send_message(self, args: SendMessageArgs) -> SendMessageOutput:
@@ -586,7 +588,7 @@ class Tools(Protocol):
     async def working_directory(self, args: WorkingDirectoryArgs) -> WorkingDirectoryOutput:
         """Read the current working directory, or change it with cd. Relative paths use the current directory. Existing shells and running processes keep their own directories."""
     async def write(self, args: WriteArgs) -> WriteOutput:
-        """Create or fully replace a UTF-8 text file."""
+        """Create or fully replace a text file. UTF-8, GB18030, and GBK encodings are supported."""
 
 tools: Tools
 ```

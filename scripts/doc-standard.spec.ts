@@ -56,6 +56,7 @@ const KIND_TEMPLATES: Readonly<Record<string, string>> = {
  */
 const PACKAGE_LIBRARIES: Readonly<Record<string, string>> = {
   'packages/util/file-drag': 'File naming and native transfer declarations without a plugin entry.',
+  'packages/util/text-encoding': 'Byte-to-text encoding detection and conversion helpers; plain module exports with no plugin entry.',
   'packages/experimental/browser-use-runtime': 'Provider-owned browser resource management and MCP integration helpers; no plugin entry.',
   'packages/boot/app-boot': 'Boot library the app bins import; plain helper exports.',
   'packages/boot/cmdline': 'Command-line library the app bins import; plain module exports.',

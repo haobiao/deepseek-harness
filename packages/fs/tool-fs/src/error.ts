@@ -43,7 +43,7 @@ export function remediateFsError(error: unknown, displayPath: string): unknown {
     // Rewriting the file as UTF-8 would be silent corruption of a legacy file, so
     // the remedy names the two routes that keep it intact.
     return new FsError(
-      `${error.message} — this file is not UTF-8; write the text to a new file, or convert the file's encoding first`,
+      `${error.message} — this file's encoding cannot represent the text; write it to a new file, or convert the file's encoding first`,
       error.code,
       { cause: error },
     )

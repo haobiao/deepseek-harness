@@ -143,14 +143,23 @@ async function waitForOperationReports(): Promise<void> {
   } finally { clearTimeout(timer) }
 }
 
+/** Captured stderr of the current Host child, read when a crash report is written. */
+let hostStderr: () => string | undefined = () => undefined
+
 function persistCrashReport(error: unknown, source: CrashReportSource): Promise<string | undefined> {
   const directory = app.getPath('logs')
+  // The Host's own fatal line is the only record of why it died; keep it even
+  // when a different failure (like a reset loopback socket) reports first and
+  // the recovery path dedupes the Host's exit report.
+  const hostDiagnostic = error instanceof DesktopHostFatalError && error.diagnostic !== undefined
+    ? error.diagnostic
+    : hostStderr()
   const report = writeCrashReport(directory, {
     operationHistoryPlanned: !shuttingDown && !operationReportsStopping,
     source,
     phase: backendReady ? 'running' : 'startup',
     error,
-    ...(error instanceof DesktopHostFatalError && error.diagnostic !== undefined ? { hostDiagnostic: error.diagnostic } : {}),
+    ...(hostDiagnostic === undefined || hostDiagnostic.trim() === '' ? {} : { hostDiagnostic }),
     rendererConsole: rendererConsole.snapshot(),
     app: {
       name: app.name, version: app.getVersion(), platform: process.platform, arch: process.arch,
@@ -533,6 +542,7 @@ async function main(): Promise<void> {
         })
         operationJournal.enqueue(JSON.stringify(record))
       })
+    hostStderr = () => host.diagnostic
     return {
       start: async () => {
         const ready = await host.start()

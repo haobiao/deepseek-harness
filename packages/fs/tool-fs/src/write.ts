@@ -72,14 +72,14 @@ export function applyWriteTool(ctx: Context, sandbox: FsSandboxController): void
 
   ctx.tools.register(defineTool({
     name: 'write',
-    description: 'Create or fully replace a UTF-8 text file.',
+    description: 'Create or fully replace a text file. UTF-8, GB18030, and GBK encodings are supported.',
     parameters: {
       file_path: {
         type: 'string', required: true,
         description: 'Path to write, resolved by the filesystem backend. '
           + 'Provide `file_path` before `content` in the arguments.',
       },
-      content: { type: 'string', required: true, description: 'Full UTF-8 text content to write.' },
+      content: { type: 'string', required: true, description: 'Full text content to write.' },
       ...sandbox.escalationModes.length > 0 ? sandbox.schemaFields() : {},
     },
     output: {

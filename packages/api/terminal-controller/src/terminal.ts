@@ -1,5 +1,6 @@
 /** One PTY, a bounded terminal emulator and its detachable browser followers. */
 import { assertNever } from '@deepseek-ai/dsh-util-values'
+import { createAutoStreamDecoder } from '@deepseek-ai/dsh-text-encoding'
 import { RemoteError, remoteErrorOf, type RemoteUplinkWindow } from '@deepseek-ai/dsh-typert-protocol'
 import type { Terminal as HeadlessTerminal } from '@xterm/headless'
 import type { SerializeAddon as Serializer } from '@xterm/addon-serialize'
@@ -210,15 +211,18 @@ export class BrowserTerminal {
   }
 
   private async consume(): Promise<void> {
-    const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
+    // A Windows console answers in the machine's code page; the sniffing
+    // decoder holds a split character back until its bytes arrive, so GBK
+    // output reaches the screen as text instead of U+FFFD.
+    const decoder = createAutoStreamDecoder()
     const outcome = this.handle.done.then((value) => { this.exited = true; return { value } }, (error: unknown) => ({ error }))
     try {
       for await (const chunk of this.handle.output) {
         // Node Readable's iterator is untyped; this provider explicitly emits Buffer chunks.
-        const data = decoder.decode(chunk as Buffer, { stream: true })
+        const data = decoder.push(chunk as Buffer)
         await this.output(data)
       }
-      await this.output(decoder.decode())
+      await this.output(decoder.end())
       const result = await outcome
       if ('error' in result) throw result.error
       this.info = { ...this.info, state: 'exited', exitCode: result.value.exitCode }

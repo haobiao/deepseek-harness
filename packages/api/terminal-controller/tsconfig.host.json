@@ -57,6 +57,9 @@
       "path": "../../util/lazy-require"
     },
     {
+      "path": "../../util/text-encoding"
+    },
+    {
       "path": "../../util/values"
     }
   ]

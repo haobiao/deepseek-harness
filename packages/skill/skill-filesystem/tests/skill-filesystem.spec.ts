@@ -315,6 +315,33 @@ describe('FileSystemSkillProvider', () => {
     expect(await ctx.skills.get('Bad_Name')).toBeUndefined()
   })
 
+  it('reads a GBK skill file through the Node fallback without losing its text', async () => {
+    const home = await tempDir('skill-gbk')
+    const root = join(home, '.dsh/skills')
+    await mkdir(root, { recursive: true })
+    // GBK bytes: frontmatter with "中文描述" and body "中文正文。"
+    await writeFile(join(root, 'gbk-skill.md'), Buffer.from(
+      '2d2d2d0a6e616d653a2067626b2d736b696c6c0a6465736372697074696f6e3a20d6d0cec4c3e8caf60a2d2d2d0a0ad6d0cec4d5fdcec4a1a30a',
+      'hex',
+    ))
+
+    const ctx = await setupLocal(home)
+    expect(await ctx.skills.get('gbk-skill')).toMatchObject({ description: '中文描述', content: '中文正文。' })
+  })
+
+  it('falls back to lossy UTF-8 for a skill file no charset proves', async () => {
+    const home = await tempDir('skill-lossy')
+    const root = join(home, '.dsh/skills')
+    await mkdir(root, { recursive: true })
+    await writeFile(join(root, 'lossy-skill.md'), Buffer.concat([
+      Buffer.from('---\nname: lossy-skill\ndescription: Lossy\n---\n\n'),
+      Buffer.from([0xff]),
+    ]))
+
+    const ctx = await setupLocal(home)
+    expect(await ctx.skills.get('lossy-skill')).toMatchObject({ description: 'Lossy', content: '�' })
+  })
+
   it('accepts the documented boolean spellings for invocation frontmatter', async () => {
     const home = await tempDir('skill-invocation-booleans')
     const root = join(home, '.dsh/skills')

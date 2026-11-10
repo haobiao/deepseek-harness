@@ -2,11 +2,12 @@
 import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
+import { asBuffer, decodeText, detectEncoding } from '@deepseek-ai/dsh-fs'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { captureFile, sameCapture, type Capture } from './capture.ts'
 import { compareText } from './compare.ts'
 import {
-  blobText, diffTrees, gitlinkPaths, ignoredPaths, locateGitWorkspace, snapshotTree, treeBlob, type GitRunner, type GitWorkspace,
+  blobBytes, diffTrees, gitlinkPaths, ignoredPaths, locateGitWorkspace, snapshotTree, treeBlob, type GitRunner, type GitWorkspace,
 } from './git.ts'
 import { canonicalPath, compareDisplay, displayPathOf, durablePathOf, isInside, isTemporaryPath, temporaryRoots, toPosix } from './paths.ts'
 import type { WorkspaceChangedFile, WorkspaceChangesSummary, WorkspaceFileDiff } from './types.ts'
@@ -286,13 +287,13 @@ export class TurnRecorder {
   private async readSide(source: ContentSource, signal: AbortSignal): Promise<string | null | typeof OVERSIZED> {
     switch (source.kind) {
       case 'absent': return null
-      case 'file': return readFile(source.file, { encoding: 'utf8', signal })
+      case 'file': return decodeStoredText(await readFile(source.file, { signal }))
       case 'snapshot': {
         const { git, workspace } = source.repository
         const blob = await treeBlob(git, workspace, source.tree, source.path, signal)
         if (blob === null) return null
         if (blob.size > this.env.maxFileBytes) return OVERSIZED
-        return blobText(git, workspace, blob.oid, this.env.maxFileBytes, signal)
+        return decodeStoredText(await blobBytes(git, workspace, blob.oid, this.env.maxFileBytes, signal))
       }
     }
   }
@@ -376,10 +377,24 @@ export class TurnRecorder {
       return list({ added: 0, deleted: 0, binary: false, oversized: true }, { refusal: 'oversized' })
     }
     if (isBinary(before) || isBinary(after)) return list({ added: 0, deleted: 0, binary: true }, { refusal: 'binary' })
-    const text = async (side: typeof before): Promise<string | null> => side.kind === 'file' ? readFile(side.file, 'utf8') : null
+    const text = async (side: typeof before): Promise<string | null> => side.kind === 'file' ? decodeStoredText(await readFile(side.file)) : null
     const { added, deleted } = compareText(await text(before), await text(after), this.env.diffTimeoutMs)
     return list({ added, deleted, binary: false }, { before, after })
   }
+}
+
+/**
+ * Decode stored bytes under the encoding they prove, so a GBK source file reads
+ * as its Chinese text rather than replacement characters. Bytes no supported
+ * charset round-trips fall back to lossy UTF-8: a preview is read-only, so
+ * showing the mangled text beats refusing the comparison a user asked for.
+ * @param bytes - the file's complete stored bytes.
+ * @returns the decoded text.
+ */
+function decodeStoredText(bytes: Uint8Array): string {
+  const { encoding } = detectEncoding(bytes)
+  if (encoding === 'lossy-utf8') return asBuffer(bytes).toString('utf8')
+  return decodeText(bytes, encoding)
 }
 
 /** Whether a captured side holds binary content. */

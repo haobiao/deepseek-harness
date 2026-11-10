@@ -1809,6 +1809,9 @@ importers:
       '@deepseek-ai/dsh-lazy-require':
         specifier: workspace:*
         version: link:../../util/lazy-require
+      '@deepseek-ai/dsh-text-encoding':
+        specifier: workspace:*
+        version: link:../../util/text-encoding
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:*
         version: link:../../typert/protocol
@@ -7460,6 +7463,9 @@ importers:
 
   packages/context/agent-instructions:
     dependencies:
+      '@deepseek-ai/dsh-text-encoding':
+        specifier: workspace:*
+        version: link:../../util/text-encoding
       '@deepseek-ai/dsh-util-values':
         specifier: workspace:*
         version: link:../../util/values
@@ -11970,6 +11976,9 @@ importers:
       '@deepseek-ai/dsh-fs-patch':
         specifier: workspace:*
         version: link:../fs-patch
+      '@deepseek-ai/dsh-text-encoding':
+        specifier: workspace:*
+        version: link:../../util/text-encoding
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
@@ -11995,9 +12004,6 @@ importers:
       chokidar:
         specifier: 5.0.0
         version: 5.0.0
-      iconv-lite:
-        specifier: 0.7.3
-        version: 0.7.3
       koffi:
         specifier: 3.1.1
         version: 3.1.1
@@ -12011,6 +12017,9 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:*
         version: link:../../llm/llm
+      iconv-lite:
+        specifier: 0.7.3
+        version: 0.7.3
 
   packages/fs/fs-observation-policy:
     devDependencies:
@@ -12147,6 +12156,9 @@ importers:
 
   packages/fs/tool-fs-search:
     dependencies:
+      '@deepseek-ai/dsh-text-encoding':
+        specifier: workspace:*
+        version: link:../../util/text-encoding
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -12205,6 +12217,9 @@ importers:
 
   packages/fs/tool-str-replace-editor:
     dependencies:
+      '@deepseek-ai/dsh-fs-patch':
+        specifier: workspace:*
+        version: link:../fs-patch
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -15648,6 +15663,9 @@ importers:
 
   packages/skill/skill-filesystem:
     dependencies:
+      '@deepseek-ai/dsh-text-encoding':
+        specifier: workspace:*
+        version: link:../../util/text-encoding
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -16793,6 +16811,9 @@ importers:
       '@deepseek-ai/dsh-lazy-require':
         specifier: workspace:*
         version: link:../../util/lazy-require
+      '@deepseek-ai/dsh-text-encoding':
+        specifier: workspace:*
+        version: link:../../util/text-encoding
       '@deepseek-ai/dsh-win32-process':
         specifier: workspace:*
         version: link:../win32-process
@@ -17646,6 +17667,16 @@ importers:
       '@types/semver':
         specifier: ^7.8.0
         version: 7.8.0
+
+  packages/util/text-encoding:
+    dependencies:
+      iconv-lite:
+        specifier: 0.7.3
+        version: 0.7.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
 
   packages/util/time:
     dependencies:

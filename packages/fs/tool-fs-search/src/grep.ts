@@ -12,6 +12,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { decodeOutput } from '@deepseek-ai/dsh-text-encoding'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, SearchResultView, ToolResult } from '@deepseek-ai/dsh-tools'
 import type { RetainedItems } from '@deepseek-ai/dsh-output-retention'
@@ -108,13 +109,27 @@ export function parseGrepArgs(args: { pattern: string; path?: string; include?: 
  * a flag.
  *
  * @param input - the validated arguments.
+ * @param options - `legacyEncoding` retries a GBK/GB18030 file under
+ *   `--encoding=gb18030`, so a non-ASCII pattern is compared against the
+ *   transcoded text instead of the raw legacy bytes.
  * @returns the complete ripgrep argument vector (excluding the binary itself).
  */
-export function buildGrepCommand(input: GrepInput): string[] {
+export function buildGrepCommand(input: GrepInput, options: { legacyEncoding?: boolean } = {}): string[] {
   const parts = ['--json', `--regexp=${input.pattern}`]
+  if (options.legacyEncoding === true) parts.push('--encoding=gb18030')
   if (input.include !== undefined) parts.push(`--glob=${input.include}`)
   if (input.path !== undefined) parts.push('--', input.path)
   return parts
+}
+
+/** Whether a pattern holds a non-ASCII character, so a legacy-encoded file needs transcoding to match it. */
+function hasNonAscii(pattern: string): boolean {
+  return /[^\x00-\x7f]/u.test(pattern)
+}
+
+/** Decode ripgrep's base64 `bytes` fallback (a path or line it could not prove is UTF-8). */
+function decodeBytesField(bytes: string): string {
+  return decodeOutput(new Uint8Array(Buffer.from(bytes, 'base64')))
 }
 
 /**
@@ -129,9 +144,9 @@ function malformedRecord(detail: string, cause?: unknown): SearchError {
  * Parse one `rg --json` NDJSON line into a match, `undefined` for the
  * non-match record types (`begin`/`end`/`context`/`summary`). A line that is
  * not JSON, or a `match` record missing its path / line number / line content,
- * throws {@link SearchError} `SEARCH_FAILED`. A match whose line is not valid
- * UTF-8 (ripgrep sends base64 `bytes` instead of `text`) yields a placeholder
- * preview rather than failing the whole search.
+ * throws {@link SearchError} `SEARCH_FAILED`. A path or line ripgrep could not
+ * prove UTF-8 (it sends base64 `bytes` instead of `text`) is decoded under its
+ * own legacy charset — GBK text and filenames are readable, not a placeholder.
  */
 function parseRecord(line: string): GrepMatch | undefined {
   let parsed: unknown
@@ -147,16 +162,28 @@ function parseRecord(line: string): GrepMatch | undefined {
   if (record.type !== 'match') return undefined
   if (typeof record.data !== 'object' || record.data === null) throw malformedRecord('a match record has no data')
   const data = record.data as { path?: unknown; line_number?: unknown; lines?: unknown }
-  const pathText = typeof data.path === 'object' && data.path !== null ? (data.path as { text?: unknown }).text : undefined
-  if (typeof pathText !== 'string') throw malformedRecord('a match record has no path text')
+  const pathField = typeof data.path === 'object' && data.path !== null
+    ? data.path as { text?: unknown; bytes?: unknown }
+    : undefined
+  // ripgrep sends a path as `text` when it is valid UTF-8 and `bytes` otherwise:
+  // a GBK filename on a Windows host is bytes, and refusing it would fail the
+  // whole search over a name the tool can still display.
+  const path = typeof pathField?.text === 'string'
+    ? pathField.text
+    : typeof pathField?.bytes === 'string'
+      ? decodeBytesField(pathField.bytes)
+      : undefined
+  if (path === undefined) throw malformedRecord('a match record has no path text or bytes')
   if (typeof data.line_number !== 'number') throw malformedRecord('a match record has no line number')
   if (typeof data.lines !== 'object' || data.lines === null) throw malformedRecord('a match record has no line content')
   const lines = data.lines as { text?: unknown; bytes?: unknown }
   if (typeof lines.text === 'string') {
-    return { path: pathText, lineNumber: data.line_number, line: lines.text.replace(/\r?\n$/, '') }
+    return { path, lineNumber: data.line_number, line: lines.text.replace(/\r?\n$/, '') }
   }
   if (typeof lines.bytes === 'string') {
-    return { path: pathText, lineNumber: data.line_number, line: '(line is not valid UTF-8)' }
+    // A line ripgrep could not prove UTF-8 is still readable text in the file's
+    // own legacy charset — GBK is the reason this branch exists.
+    return { path, lineNumber: data.line_number, line: decodeBytesField(lines.bytes).replace(/\r?\n$/, '') }
   }
   throw malformedRecord('a match record has neither line text nor bytes')
 }
@@ -322,7 +349,14 @@ export function applyGrepTool(ctx: Context, caps: GrepToolCaps): void {
     },
     async execute(args, exec) {
       const input = parseGrepArgs(args)
-      const run = await runRipgrep(ctx, exec, 'grep', buildGrepCommand(input), caps.rawOutputMaxBytes, caps.graceMs, caps.stderrMaxBytes)
+      let run = await runRipgrep(ctx, exec, 'grep', buildGrepCommand(input), caps.rawOutputMaxBytes, caps.graceMs, caps.stderrMaxBytes)
+      if (run.noMatches && hasNonAscii(input.pattern)) {
+        // The default pass compares the pattern's UTF-8 bytes against the raw
+        // file bytes, so a CJK pattern can never match a GBK file. Retry only
+        // where the cheap answer was empty: treating every file as GB18030
+        // would garble the UTF-8 ones searched above.
+        run = await runRipgrep(ctx, exec, 'grep', buildGrepCommand(input, { legacyEncoding: true }), caps.rawOutputMaxBytes, caps.graceMs, caps.stderrMaxBytes)
+      }
       if (run.noMatches) return { matches: [] }
 
       const all: GrepMatch[] = []

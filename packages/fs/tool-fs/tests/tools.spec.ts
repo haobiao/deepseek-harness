@@ -19,6 +19,7 @@ import ToolRuntime, { type ToolResult } from '@deepseek-ai/dsh-tools'
 import { FileSystem, FsError, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
 import type {
   FsDirEntry,
+  FsEditMatchStrategy,
   FsEditOutcome,
   FsEditRequest,
   FsInfo,
@@ -49,6 +50,7 @@ class FakeFs extends FileSystem {
 
   override watch(): never { throw new Error('Fixture does not support watching') }
   files = new Map<string, string>()
+  editStrategy?: FsEditMatchStrategy
   rejectWith?: FsError
   writeIntents: (FsWriteIntent | undefined)[] = []
   editIntents: ({ version: FsVersion } | undefined)[] = []
@@ -109,7 +111,10 @@ class FakeFs extends FileSystem {
     const content = this.files.get(target.targetKey) ?? ''
     const after = content.split(edit.oldString).join(edit.newString)
     this.files.set(target.targetKey, after)
-    return { version: FsVersion('v3'), before: content, after }
+    return {
+      version: FsVersion('v3'), before: content, after,
+      ...this.editStrategy === undefined ? {} : { matchStrategy: this.editStrategy },
+    }
   }
 }
 
@@ -487,6 +492,19 @@ describe('edit tool', () => {
     await call(ctx, 'read', { file_path: 'a.txt' }, { session })
     const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'a', new_string: 'b', replace_all: true }, { session })
     expect(text(result)).toBe('The file /abs/a.txt has been updated. All occurrences were successfully replaced.')
+  })
+
+  it('discloses the tolerant pass that matched', async () => {
+    const { ctx, fs } = await setup()
+    const session = { header: {} }
+    fs.files.set('key:a.txt', 'a')
+    fs.editStrategy = 'relative-indent'
+    await call(ctx, 'read', { file_path: 'a.txt' }, { session })
+    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'a', new_string: 'b' }, { session })
+    expect(result.value).toMatchObject({ matchStrategy: 'relative-indent' })
+    expect(text(result)).toBe(
+      'The file /abs/a.txt has been updated successfully (old_string matched after ignoring a uniform indentation difference).',
+    )
   })
 
   it('rejects identical old/new strings', async () => {

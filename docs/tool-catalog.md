@@ -947,7 +947,7 @@ Custom editing tool for viewing, creating and editing files
 * A null placeholder for a parameter unused by the selected command is treated as omitted. Required parameters still need values; omit `str_replace.new_str` rather than setting it to null when deleting a match
 
 Notes for using the `str_replace` command:
-* The `old_str` parameter should match EXACTLY one or more consecutive lines from the original file. Be mindful of whitespaces!
+* The `old_str` parameter should match one or more consecutive lines from the original file, preferably exactly. Matching tolerates trailing whitespace, tab width, uniform or per-line indentation differences, differing blank-line runs, and typographic punctuation; the result states when it did.
 * If the `old_str` parameter is not unique in the file, the replacement will not be performed. Make sure to include enough context in `old_str` to make it unique
 * The `new_str` parameter should contain the edited lines that should replace the `old_str`
 
@@ -1045,7 +1045,7 @@ Standalone view/create/unique literal replace/line insert tool over the filesyst
 
 ### `apply_patch`
 
-Create, update, delete, or move UTF-8 text files with one patch; prefer it over multiple edit calls when a change spans several files or separated regions.
+Create, update, delete, or move text files with one patch; UTF-8, GB18030, and GBK encodings are supported; prefer it over multiple edit calls when a change spans several files or separated regions.
 
 ```json
 {
@@ -1066,7 +1066,7 @@ Source: [`packages/fs/tool-fs/src/index.ts`](../packages/fs/tool-fs/src/index.ts
 
 ### `edit`
 
-Edit an existing UTF-8 text file by replacing literal text.
+Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported.
 
 ```json
 {
@@ -1078,7 +1078,7 @@ Edit an existing UTF-8 text file by replacing literal text.
     },
     "old_string": {
       "type": "string",
-      "description": "Literal text to replace."
+      "description": "Literal text to replace. Prefer an exact quote; trailing whitespace, tab width, uniform or per-line indentation differences, blank-line runs, and typographic punctuation are tolerated, and the result states when a tolerant match was used."
     },
     "new_string": {
       "type": "string",
@@ -1101,7 +1101,7 @@ Source: [`packages/fs/tool-fs/src/index.ts`](../packages/fs/tool-fs/src/index.ts
 
 ### `read`
 
-Read a UTF-8 text file and return line-numbered content.
+Read a text file and return line-numbered content. UTF-8, GB18030, and GBK encodings are decoded.
 
 ```json
 {
@@ -1151,7 +1151,7 @@ Source: [`packages/fs/tool-fs/src/index.ts`](../packages/fs/tool-fs/src/index.ts
 
 ### `write`
 
-Create or fully replace a UTF-8 text file.
+Create or fully replace a text file. UTF-8, GB18030, and GBK encodings are supported.
 
 ```json
 {
@@ -1163,7 +1163,7 @@ Create or fully replace a UTF-8 text file.
     },
     "content": {
       "type": "string",
-      "description": "Full UTF-8 text content to write."
+      "description": "Full text content to write."
     }
   },
   "required": [

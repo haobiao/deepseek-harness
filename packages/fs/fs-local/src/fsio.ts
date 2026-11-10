@@ -14,6 +14,8 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { homedir } from 'node:os'
 import { FsError, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
+import type { FsEditMatchStrategy } from '@deepseek-ai/dsh-fs'
+import { findLiteralMatches, formatLiteralMismatch, locateLiteralMismatch, replaceLiteralMatches } from '@deepseek-ai/dsh-fs-patch'
 import { copyFileDaclWin32, replaceFileWin32 } from './win32.ts'
 import {
   createStreamDecoder,
@@ -24,8 +26,8 @@ import {
   trimPartialUtf8,
   UndecodableTextError,
   UnencodableTextError,
-} from './encoding/index.ts'
-import type { DetectedTextEncoding, StreamDecoder, TextEncoding } from './encoding/index.ts'
+} from '@deepseek-ai/dsh-fs'
+import type { DetectedTextEncoding, StreamDecoder, TextEncoding } from '@deepseek-ai/dsh-fs'
 
 const BINARY_SAMPLE_BYTES = 8192
 /** Bytes sampled to detect a file's encoding; a larger file decides from this head. */
@@ -643,9 +645,11 @@ export async function* streamWholeText(
     const tail = decoder.end()
     if (tail.length > 0) yield tail
   } catch (error: unknown) {
-    /* v8 ignore next 4 -- mid-stream errors need an abort/IO fault racing the loop; pre-abort is caught by throwIfAborted. */
+    /* v8 ignore start -- needs a mid-stream abort or IO fault racing the read loop; no fixture drives either branch. */
     if (isAbortError(error)) throw new FsError('read aborted', 'FS_ABORTED')
+    if (error instanceof UndecodableTextError) throw notTextError('read', target.displayPath)
     throw error
+    /* v8 ignore stop */
   }
 }
 
@@ -933,17 +937,6 @@ function restoreLineEndings(content: string, lineEndings: LineEndings): string {
   return lineEndings === 'LF' ? content : normalizeLineEndings(content).split('\n').join('\r\n')
 }
 
-function countOccurrences(content: string, needle: string): number {
-  let count = 0
-  let index = 0
-  while (true) {
-    const found = content.indexOf(needle, index)
-    if (found === -1) return count
-    count += 1
-    index = found + needle.length
-  }
-}
-
 /**
  * Read and decode a file for editing: rejects binaries, returns LF-normalized
  * content plus the original line-ending style and encoding for write-back.
@@ -1042,15 +1035,20 @@ export async function readTextForDiff(
 }
 
 /**
- * Apply a literal replacement to LF-normalized content. Empty or missing search text throws
- * `FS_EDIT_NOT_FOUND`; multiple matches throw `FS_AMBIGUOUS_EDIT` unless `replaceAll` is true.
+ * Apply a literal replacement to LF-normalized content. An exact match wins; failing that,
+ * a tolerant pass (trailing whitespace, tab width, uniform or per-line indentation,
+ * blank-line runs, typographic punctuation) may match, and the result reports which pass
+ * was used. Empty or
+ * missing search text throws `FS_EDIT_NOT_FOUND` with the nearest differing line; multiple
+ * matches throw `FS_AMBIGUOUS_EDIT` unless `replaceAll` is true.
  * @param content - the current file content, already LF-normalized.
  * @param oldString - literal text to find; CRLF inside it is normalized to LF before
  *   matching.
  * @param newString - literal replacement text, normalized the same way.
  * @param replaceAll - replace every match instead of requiring exactly one.
  * @param displayPath - the caller-facing path used in error messages.
- * @returns the edited LF-normalized content plus how many occurrences were replaced.
+ * @returns the edited LF-normalized content, how many occurrences were replaced, and the
+ *   tolerant pass when the match was not exact.
  */
 export function applyLiteralEdit(
   content: string,
@@ -1058,20 +1056,28 @@ export function applyLiteralEdit(
   newString: string,
   replaceAll: boolean,
   displayPath: string,
-): { content: string; replacements: number } {
+): { content: string; replacements: number; matchStrategy?: FsEditMatchStrategy } {
   const oldNorm = normalizeLineEndings(oldString)
   if (oldNorm.length === 0) {
     throw new FsError('old_string must be a non-empty string', 'FS_EDIT_NOT_FOUND')
   }
   const newNorm = normalizeLineEndings(newString)
-  const replacements = countOccurrences(content, oldNorm)
-  if (replacements === 0) {
-    throw new FsError(`old_string was not found in "${displayPath}"`, 'FS_EDIT_NOT_FOUND')
+  const found = findLiteralMatches(content, oldNorm)
+  if (found.matches.length === 0) {
+    const mismatch = locateLiteralMismatch(content, oldNorm)
+    const detail = mismatch === undefined
+      ? ' (the file is empty)'
+      : `; ${formatLiteralMismatch(mismatch)}`
+    throw new FsError(`old_string was not found in "${displayPath}"${detail}`, 'FS_EDIT_NOT_FOUND')
   }
-  if (!replaceAll && replacements > 1) {
-    throw new FsError(`old_string matched ${replacements} times in "${displayPath}"; provide a more specific old_string or set replace_all to true`, 'FS_AMBIGUOUS_EDIT')
+  if (!replaceAll && found.matches.length > 1) {
+    throw new FsError(`old_string matched ${found.matches.length} times in "${displayPath}"; provide a more specific old_string or set replace_all to true`, 'FS_AMBIGUOUS_EDIT')
   }
-  return { content: content.split(oldNorm).join(newNorm), replacements }
+  return {
+    content: replaceLiteralMatches(content, found.matches, newNorm),
+    replacements: found.matches.length,
+    ...(found.strategy === 'exact' ? {} : { matchStrategy: found.strategy }),
+  }
 }
 
 export { normalizeLineEndings, restoreLineEndings }

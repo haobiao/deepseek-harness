@@ -93,6 +93,33 @@ describe('desktop welcome Web operations', () => {
     await expect(backend.read()).rejects.toThrow('Web RPC failed')
   })
 
+  it('retries a reset loopback connection once while reading startup metadata', async () => {
+    const host = transport()
+    host.keys.set('CUSTOM_DEEPSEEK_KEY', 'sk-other')
+    const backend = connectDesktopWelcome(url, cookie, host.send)
+    host.send.mockRejectedValueOnce(Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+    }))
+    expect(await backend.read()).toMatchObject({ hasApiKey: true })
+    expect(host.send.mock.calls.filter(([input]) => input.includes('/api/settings/describe'))).toHaveLength(2)
+  })
+
+  it('does not retry a non-transport read failure or repeat a persistent reset', async () => {
+    const host = transport()
+    const backend = connectDesktopWelcome(url, cookie, host.send)
+    host.send.mockRejectedValueOnce(new Error('desktop welcome: unexpected transport'))
+    const nonTransport = backend.read()
+    await expect(nonTransport).rejects.toThrow('settings/describe request failed')
+    await expect(nonTransport).rejects.toMatchObject({ cause: { message: 'desktop welcome: unexpected transport' } })
+    const reset = Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+    })
+    host.send.mockRejectedValueOnce(reset).mockRejectedValueOnce(reset)
+    const before = host.send.mock.calls.length
+    await expect(backend.read()).rejects.toThrow('settings/describe request failed')
+    expect(host.send.mock.calls.length - before).toBe(2)
+  })
+
   it('submits native analytics through authenticated RPC with a bounded request', async () => {
     const host = transport()
     const backend = connectDesktopWelcome(url, cookie, host.send)

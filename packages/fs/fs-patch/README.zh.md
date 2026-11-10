@@ -39,6 +39,18 @@ if (operation?.kind === 'update') {
 
 `applyHunks` 返回 `{ ok: true, after }` 或 `{ ok: false, failure }`，不修改输入。匹配失败报告 hunk 在补丁中的行号、`context` 或 `oldLines` 阶段、顺序搜索游标和原始未匹配模式；移除末尾空行重试后仍报告原始模式。以返回值而非异常报告失败，便于调用方收集多个文件操作的匹配失败。
 
+`findLiteralMatches` 按容错阶梯定位字面文本：逐字节精确匹配（搜索文本中的 CRLF 写法保持不变）、行尾空白、制表符展开为四个空格、多行搜索的统一缩进差异、多行搜索的逐行缩进差异、空行段数量差异，最后是排版标点。命中第一级即停止，绝不平缩连续内部空格，逐行缩进匹配仅在更严格的匹配级全部失败后才会尝试，并以原始偏移报告每个匹配及其使用的级别。`replaceLiteralMatches` 从后向前拼接替换。`locateLiteralMismatch` 和 `formatLiteralMismatch` 为失败消息给出最近的不一致行列。
+
+```ts
+import { findLiteralMatches, replaceLiteralMatches } from '@deepseek-ai/dsh-fs-patch'
+
+const source = 'const answer = 42  \n'
+const oldText = 'const answer = 42'
+const newText = 'const answer = 43'
+const { matches, strategy } = findLiteralMatches(source, oldText)
+const after = replaceLiteralMatches(source, matches, newText)
+```
+
 <a id="compatibility"></a>
 ## 兼容性
 

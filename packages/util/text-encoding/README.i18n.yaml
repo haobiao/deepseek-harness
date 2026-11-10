@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/util/text-encoding/README.md
+/:
+  en: 4ba8fdcc5837cb31
+  zh: 7241e26192e77a2b
+/dsh-text-encoding:
+  en: abe3e082c3cc38b2
+  zh: 44dd54977522fa03
+/dsh-text-encoding/summary:
+  en: d4faf6b4de28082f
+  zh: f8184a35a2f08c83
+/dsh-text-encoding/table-of-contents:
+  en: 80b31a934611cb4a
+  zh: 05f3f7f9cb2fd881
+/dsh-text-encoding/use-this-package:
+  en: c6b0a3538c878bcd
+  zh: be3e26b692648f09
+/dsh-text-encoding/understand-the-implementation:
+  en: f65b0c583c45d98d
+  zh: 0308171b0e720bc9
+/dsh-text-encoding/further-exploration:
+  en: ecb33fbd11e66f1f
+  zh: d2ef79c62e5c3f6a
+/dsh-text-encoding/known-limitations-and-deferred-work:
+  en: 2b32ff89cefd1ee8
+  zh: 76da88638b87bf0f
+/dsh-text-encoding/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: e88aeb617ffb74ea

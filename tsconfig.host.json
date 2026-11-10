@@ -352,6 +352,7 @@
     { "path": "./packages/client/ui-trajectory/tsconfig.host.json" },
     { "path": "./packages/util/time" },
     { "path": "./packages/util/timeout" },
+    { "path": "./packages/util/text-encoding" },
     { "path": "./packages/util/crypto" },
     { "path": "./packages/util/deque" },
     { "path": "./packages/util/chunked-list" },

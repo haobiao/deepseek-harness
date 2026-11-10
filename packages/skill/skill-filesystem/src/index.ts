@@ -19,6 +19,7 @@ import type Schema from '@deepseek-ai/schemastery'
 import { parse as parseYaml } from 'yaml'
 import type { FileSystem, FsDirEntry, FsTarget } from '@deepseek-ai/dsh-fs'
 import { canonicalizeWatchPath, resolveAgentsHome, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { decodeText, detectEncoding, UndecodableTextError } from '@deepseek-ai/dsh-text-encoding'
 import {
   BUNDLED_SKILL_RANK,
   isSkillName,
@@ -865,7 +866,17 @@ async function readSkillText(ctx: Context, path: string, signal?: AbortSignal, t
   }
   try {
     const resolvedPath = await realpath(path)
-    return { path: resolvedPath, content: await readFile(resolvedPath, { encoding: 'utf8', signal }) }
+    // Without `ctx.fs` this fallback sees raw bytes; a skill saved in GBK on a
+    // Windows checkout must still reach frontmatter parsing as its own text.
+    const raw = await readFile(resolvedPath, { signal })
+    const detected = detectEncoding(raw)
+    try {
+      return { path: resolvedPath, content: decodeText(raw, detected.encoding) }
+    } catch (error) {
+      /* v8 ignore next -- decodeText throws only UndecodableTextError for a sample no charset proves. */
+      if (!(error instanceof UndecodableTextError)) throw error
+      return { path: resolvedPath, content: raw.toString('utf8') }
+    }
   } catch (error) {
     signal?.throwIfAborted()
     if (isAbsentSkillPathError(error)) return undefined

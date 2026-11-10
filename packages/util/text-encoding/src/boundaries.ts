@@ -3,7 +3,7 @@
  * whole characters. Both detection and streaming need this, because a sample cut
  * inside a character otherwise reads as invalid text for the encoding it is
  * actually in.
- * @module @deepseek-ai/dsh-fs-local/encoding/boundaries
+ * @module @deepseek-ai/dsh-text-encoding/boundaries
  */
 
 /** Longest UTF-8 sequence a leading byte can declare. */

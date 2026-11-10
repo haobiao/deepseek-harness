@@ -119,6 +119,16 @@ describe('BrowserTerminal', () => {
     expect(await readFrame(first.iterator)).toMatchObject({ type: 'output', data: '\uFEFF终端' })
   })
 
+  it('decodes GBK terminal output split across chunks', async () => {
+    const { terminal, output } = fixture()
+    const first = await attach(terminal)
+    // GBK bytes of "参数格式不正确", split inside the first character.
+    const gbk = Buffer.from('b2cecafdb8f1cabdb2bbd5fdc8b7', 'hex')
+    output.write(gbk.subarray(0, 1))
+    output.write(gbk.subarray(1))
+    expect(await readFrame(first.iterator)).toMatchObject({ type: 'output', data: '参数格式不正确' })
+  })
+
   it('shares concurrent close attempts and permits retry after termination fails', async () => {
     const { terminal, handle } = fixture()
     const view = await attach(terminal)

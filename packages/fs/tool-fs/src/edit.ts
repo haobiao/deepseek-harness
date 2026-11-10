@@ -8,7 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DiffCallView, DiffResultView, ToolResult } from '@deepseek-ai/dsh-tools'
-import type {} from '@deepseek-ai/dsh-fs'
+import type { FsEditMatchStrategy } from '@deepseek-ai/dsh-fs'
 import { computeHunkDiffs, diffsFromMeta } from './diff.ts'
 import { remediateFsError } from './error.ts'
 import { mutationResult } from './mutation-result.ts'
@@ -56,16 +56,29 @@ export function parseEditArgs(args: { file_path: string; old_string: string; new
   }
 }
 
+const MATCH_NOTES: Record<FsEditMatchStrategy, string> = {
+  'trailing-whitespace': 'ignoring trailing whitespace',
+  'expanded-tabs': 'normalizing tab width',
+  'relative-indent': 'ignoring a uniform indentation difference',
+  'per-line-indent': 'ignoring per-line indentation differences',
+  'blank-line-runs': 'tolerating a different number of blank lines',
+  punctuation: 'normalizing typographic punctuation',
+}
+
 /**
  * Format an edit success (single-match or replace-all) as a Claude-style model-facing message.
  * @param displayPath - the backend-resolved path shown to the model.
  * @param replaceAll - selects the all-occurrences wording over the single-replacement one.
+ * @param matchStrategy - the tolerant pass the backend used, absent for an exact match.
  * @returns the confirmation sentence the model sees as the tool result.
  */
-export function formatEditOutput(displayPath: string, replaceAll: boolean): string {
-  return replaceAll
-    ? `The file ${displayPath} has been updated. All occurrences were successfully replaced.`
-    : `The file ${displayPath} has been updated successfully.`
+export function formatEditOutput(displayPath: string, replaceAll: boolean, matchStrategy?: FsEditMatchStrategy): string {
+  const base = replaceAll
+    ? `The file ${displayPath} has been updated. All occurrences were successfully replaced`
+    : `The file ${displayPath} has been updated successfully`
+  return matchStrategy === undefined
+    ? `${base}.`
+    : `${base} (old_string matched after ${MATCH_NOTES[matchStrategy]}).`
 }
 
 /**
@@ -84,14 +97,18 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
 
   ctx.tools.register(defineTool({
     name: 'edit',
-    description: 'Edit an existing UTF-8 text file by replacing literal text.',
+    description: 'Edit an existing text file by replacing literal text. UTF-8, GB18030, and GBK encodings are supported.',
     parameters: {
       file_path: {
         type: 'string', required: true,
         description: 'Path to edit, resolved by the filesystem backend. '
           + 'Provide `file_path` before `old_string` and `new_string` in the arguments.',
       },
-      old_string: { type: 'string', required: true, description: 'Literal text to replace.' },
+      old_string: {
+        type: 'string', required: true,
+        description: 'Literal text to replace. Prefer an exact quote; trailing whitespace, tab width, uniform or per-line indentation differences, '
+          + 'blank-line runs, and typographic punctuation are tolerated, and the result states when a tolerant match was used.',
+      },
       new_string: { type: 'string', required: true, description: 'Literal replacement text. Use an empty string to delete the match.' },
       replace_all: { type: 'boolean', description: 'Replace all matches. Defaults to false; when false, old_string must appear exactly once.' },
       ...sandbox.escalationModes.length > 0 ? sandbox.schemaFields() : {},
@@ -104,11 +121,15 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
           path: { type: 'string', required: true, description: 'Canonical absolute path in the filesystem execution world.' },
           before: { type: 'string', required: true },
           after: { type: 'string', required: true },
+          matchStrategy: {
+            type: 'string',
+            description: 'Present only when old_string matched after a whitespace or punctuation normalization.',
+          },
         },
       },
       render: (args, value) => [{
         type: 'text',
-        text: formatEditOutput(value.path, args.replace_all ?? false),
+        text: formatEditOutput(value.path, args.replace_all ?? false, value.matchStrategy as FsEditMatchStrategy | undefined),
       }],
       presentationMeta: (_args, value) => ({
         path: value.path,

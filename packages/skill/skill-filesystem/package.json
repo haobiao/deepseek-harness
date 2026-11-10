@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "chokidar": "5.0.0",
+    "@deepseek-ai/dsh-text-encoding": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
     "yaml": "^2.4.2"
   },

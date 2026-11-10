@@ -2,13 +2,13 @@
  * Byte-level text conversion for the local backend: decode a detected encoding
  * into a JavaScript string, encode a string back under a file's own encoding,
  * and stream both without ever splitting a character across chunks.
- * @module @deepseek-ai/dsh-fs-local/encoding/codec
+ * @module @deepseek-ai/dsh-text-encoding/codec
  */
 
 import iconv from 'iconv-lite'
 import { wholeCharsetLength } from './boundaries.ts'
 import type { LegacyCharset } from './boundaries.ts'
-import { asBuffer } from './detect.ts'
+import { asBuffer, detectEncoding } from './detect.ts'
 import { UndecodableTextError, UnencodableTextError } from './types.ts'
 import type { TextEncoding } from './types.ts'
 
@@ -149,6 +149,73 @@ export function createStreamDecoder(encoding: TextEncoding): StreamDecoder {
       } catch {
         throw new UndecodableTextError('bytes are not valid UTF-8')
       }
+    },
+  }
+}
+
+/** Bytes that may accumulate while the charset is still unproven. */
+const AUTO_SNIFF_LIMIT_BYTES = 4096
+
+/** Whether `data` holds a non-ASCII byte, so its decode proves the charset rather than ASCII passing through. */
+function hasNonAscii(data: Uint8Array): boolean {
+  return data.some(byte => byte >= 0x80)
+}
+
+/**
+ * Create a decoder for a live byte stream whose charset is not known in
+ * advance — a Windows console's stdout, which answers in the machine's code
+ * page rather than UTF-8.
+ *
+ * ASCII is emitted immediately: it reads the same under every supported
+ * charset, so waiting for proof would only delay a prompt. The first
+ * multi-byte character decides the charset: a valid UTF-8 sequence selects
+ * UTF-8, otherwise the bytes are read as GB18030, the superset a Chinese
+ * Windows console emits. Bytes held back from an inconclusive tail are fed to
+ * the chosen decoder, so no character is lost at the switch.
+ * @returns the sniffing chunk decoder; `end()` flushes what is still held.
+ */
+export function createAutoStreamDecoder(): StreamDecoder {
+  let pending: Buffer = Buffer.alloc(0)
+  let inner: StreamDecoder | undefined
+
+  const adopt = (encoding: TextEncoding): string => {
+    if (encoding === 'utf8-bom') {
+      // A display stream keeps its BOM visible; the strict UTF-8 decoder would
+      // swallow it as a byte-order mark.
+      inner = createStreamDecoder('utf8')
+      const body = pending.subarray(UTF8_BOM_BYTES.length)
+      pending = Buffer.alloc(0)
+      return '\uFEFF' + inner.push(body)
+    }
+    const normalized: TextEncoding = encoding === 'lossy-utf8' ? 'gb18030' : encoding
+    inner = createStreamDecoder(normalized)
+    const text = inner.push(pending)
+    pending = Buffer.alloc(0)
+    return text
+  }
+
+  return {
+    push(chunk: Uint8Array): string {
+      if (inner !== undefined) return inner.push(chunk)
+      pending = pending.length === 0 ? asBuffer(chunk) : Buffer.concat([pending, asBuffer(chunk)])
+      const detected = detectEncoding(pending, { fragment: true })
+      if (detected.encoding === 'utf8') {
+        if (!hasNonAscii(pending.subarray(0, detected.wholeLength)) && pending.length <= AUTO_SNIFF_LIMIT_BYTES) {
+          // The whole-character prefix is ASCII, so the non-ASCII tail is a
+          // character still arriving: emit the proof and keep the rest.
+          const whole = pending.subarray(0, detected.wholeLength)
+          pending = pending.subarray(detected.wholeLength)
+          return whole.toString('utf8')
+        }
+        return adopt('utf8')
+      }
+      return adopt(detected.encoding)
+    },
+    end(): string {
+      if (inner !== undefined) return inner.end()
+      const rest = pending.toString('utf8')
+      pending = Buffer.alloc(0)
+      return rest
     },
   }
 }

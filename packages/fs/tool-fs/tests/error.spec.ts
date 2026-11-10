@@ -40,7 +40,7 @@ describe('remediateFsError', () => {
     const remedied = remediateFsError(original, 'x')
     expect(remedied.code).toBe('FS_NOT_ENCODABLE')
     expect(remedied.cause).toBe(original)
-    expect(remedied.message).toBe(`${original.message} — this file is not UTF-8; write the text to a new file, or convert the file's encoding first`)
+    expect(remedied.message).toBe(`${original.message} — this file's encoding cannot represent the text; write it to a new file, or convert the file's encoding first`)
   })
 
   it('leaves other FsError codes untouched', () => {

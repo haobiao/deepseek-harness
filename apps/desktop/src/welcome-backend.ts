@@ -3,6 +3,7 @@ import type { ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/typ
 
 import { randomUUID } from 'node:crypto'
 import { desktopAccountBackend, type DesktopAccountBackend } from './account-backend.ts'
+import { retryTransient } from './loopback-transport.ts'
 
 /** Metadata needed before the native entry or workspace becomes visible. */
 export interface WelcomeState {
@@ -53,11 +54,18 @@ export function connectDesktopWelcome(
   ): Promise<unknown> => {
     const rpcId = randomUUID()
     const method = `${request.namespace}/${request.method}`
-    const response = await send(new URL(`/api/${method}`, origin).href, {
-      method: 'POST', redirect: 'error', ...(signal === undefined ? {} : { signal }),
-      headers: { 'content-type': 'application/json', cookie },
-      body: JSON.stringify({ type: 'client-request', rpcId, method, payload: { args: request.args } }),
-    })
+    let response: Response
+    try {
+      response = await send(new URL(`/api/${method}`, origin).href, {
+        method: 'POST', redirect: 'error', ...(signal === undefined ? {} : { signal }),
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ type: 'client-request', rpcId, method, payload: { args: request.args } }),
+      })
+    } catch (error) {
+      // Name the request: a bare `fetch failed` leaves the crash report unable
+      // to tell an authentication socket failure from a later metadata poll.
+      throw new Error(`desktop welcome: ${method} request failed`, { cause: error })
+    }
     if (!response.ok) throw new Error('desktop welcome: Web request failed')
     const envelope: unknown = await response.json()
     if (!record(envelope) || envelope.type !== 'server-response' || envelope.rpcId !== rpcId
@@ -85,7 +93,7 @@ export function connectDesktopWelcome(
     }
     return locale.value.preference ?? null
   }
-  const read = async (): Promise<WelcomeState> => {
+  const readOnce = async (): Promise<WelcomeState> => {
     const { settings, ref } = await settingsAndReference()
     const providers = await invoke({ namespace: 'llm', method: 'listConfigurableProviders', args: {} })
     if (!Array.isArray(providers)) throw new Error('desktop welcome: invalid provider directory')
@@ -118,6 +126,10 @@ export function connectDesktopWelcome(
       localePreference: localePreference(namespaces),
     }
   }
+  // These reads only observe Host state, so one fresh attempt is safe. Startup
+  // treats this read as fatal; a loopback socket reset between the Host
+  // handshake and the first RPC must not end the application.
+  const read = (): Promise<WelcomeState> => retryTransient(readOnce)
   return {
     account,
     read,
