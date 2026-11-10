@@ -78,7 +78,7 @@ describe('unsigned Windows release publication', () => {
     // No historical-run auto-selection loop.
     expect(build.run).not.toContain('--limit 30')
     const callInputs = (publication.on.workflow_call as { inputs: Record<string, { required?: boolean }> }).inputs
-    expect(callInputs.package_run_id.required).toBe(true)
+    expect(callInputs.package_run_id?.required).toBe(true)
     // Waiting on the build it dispatched needs a runner budget larger than the
     // packaging job's own 120-minute cap.
     expect(job(publication, 'resolve')['timeout-minutes']).toBeGreaterThan(120)
@@ -136,7 +136,7 @@ describe('unsigned Windows release publication', () => {
     expect(release.run).toContain("'release', 'create', $env:TAG")
     for (const trigger of ['workflow_dispatch', 'workflow_call']) {
       const inputs = (publication.on[trigger] as { inputs: Record<string, { default?: unknown }> }).inputs
-      expect(inputs.replace_assets.default).toBe(true)
+      expect(inputs.replace_assets?.default).toBe(true)
     }
   })
 
