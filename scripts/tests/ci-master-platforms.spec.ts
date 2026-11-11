@@ -97,7 +97,7 @@ describe('master-only platform scheduling', () => {
     }
   })
 
-  it('runs all three deferred carriers on master pushes with fail-loud API credentials', () => {
+  it('runs all three deferred carriers on master pushes and skips real-API checks without credentials', () => {
     const master = workflow('ci-master.yml')
     expect(master.on.push).toEqual({ branches: ['master'] })
     expect(Object.keys(master.on).sort()).toEqual(['push', 'workflow_dispatch'])
@@ -120,7 +120,11 @@ describe('master-only platform scheduling', () => {
     expect(preflight.if).toContain("github.event_name != 'pull_request'")
     expect(preflight.if).toContain('github.event.pull_request.head.repo.fork')
     expect(preflight.if).toContain("github.event.pull_request.user.login == 'dependabot[bot]'")
-    expect(preflight.run).toContain('exit 1')
+    // A missing secret is a skip-with-warning, not a failure: forks have no key
+    // and must not turn the lane red for something they cannot verify.
+    expect(preflight.run).toContain('available=false')
+    expect(preflight.run).toContain('::warning::')
+    expect(preflight.run).not.toContain('exit 1')
   })
 
   it('runs Wine once on hosted master CI and seeds its own apt cache', () => {
