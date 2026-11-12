@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-text-encoding",
   "description": "Encoding detection and conversion for stored and captured text: BOM and strict-UTF-8 checks, GB18030/GBK round-trip proof, streaming decoders, and display decoding for bounded subprocess output",
-  "version": "0.2.2-rc.1",
+  "version": "0.2.2-rc.2",
   "publishConfig": {
     "access": "public"
   },
