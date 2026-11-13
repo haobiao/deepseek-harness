@@ -174,7 +174,7 @@ describe('workspace-changes in a repository', () => {
     // An ignored file reaches the comparison through its captured copies rather than a snapshot.
     await writeFile(join(cwd, '.env'), before)
     const { ctx } = await boot()
-    const session = ctx.sessions.create(SessionId('gbk'), { meta: { cwd } })
+    const session = ctx.sessions.create(brandString<SessionId>('gbk'), { meta: { cwd } })
     startTurn(session, 1)
     await settle(ctx, session)
     await mutate(ctx, session, 1, 'edit', { file_path: 'gbk.txt', old_string: '旧内容', new_string: '新内容' },
@@ -206,7 +206,7 @@ describe('workspace-changes in a repository', () => {
     await writeFile(join(cwd, 'lossy.txt'), before)
     git(cwd, 'add', 'lossy.txt'); git(cwd, 'commit', '-q', '-m', 'lossy')
     const { ctx } = await boot()
-    const session = ctx.sessions.create(SessionId('lossy'), { meta: { cwd } })
+    const session = ctx.sessions.create(brandString<SessionId>('lossy'), { meta: { cwd } })
     startTurn(session, 1)
     await settle(ctx, session)
     await mutate(ctx, session, 1, 'write', { file_path: 'lossy.txt', content: 'B�\n' },
