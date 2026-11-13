@@ -1,7 +1,6 @@
 /** Local Web document and authenticated HTTP forwarding for the application window. */
 import { readFile } from 'node:fs/promises'
 import { extname, resolve, sep } from 'node:path'
-import { retryTransient } from './loopback-transport.ts'
 
 const MIME: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -34,33 +33,6 @@ export async function serveWebDocument(request: Request, root: string): Promise<
   return new Response(request.method === 'HEAD' ? null : content, {
     headers: { 'content-type': MIME[extname(target)] ?? 'application/octet-stream' },
   })
-}
-
-/**
- * Exchange the Host launch URL for an authority-bound browser cookie.
- * @param url - Authenticated URL reported by the owned Host process.
- * @returns Cookie header for requests forwarded to that Host.
- */
-export async function authenticateWebHost(url: string): Promise<string> {
-  // The first request after the Host spawns can meet a reset loopback socket;
-  // the exchange is idempotent, so one reconnect is safe.
-  const response = await retryTransient(async () => {
-    try {
-      return await fetch(url, { redirect: 'manual' })
-    } catch (error) {
-      // Name the request: the crash report otherwise shows only `fetch failed`,
-      // indistinguishable from a later metadata poll against the same Host.
-      throw new Error('Desktop Host authentication request failed', { cause: error })
-    }
-  })
-  const cookie = response.headers.get('set-cookie')
-  // Consume the redirect body before reusing the pooled loopback connection. Cancelling
-  // it aborts the request, which on some platforms leaves the socket unusable for the
-  // next (immediately following) Host request.
-  await response.arrayBuffer()
-  if (response.status !== 303 || cookie === null) throw new Error('Desktop Host authentication failed')
-  const end = cookie.indexOf(';')
-  return end < 0 ? cookie : cookie.slice(0, end)
 }
 
 /** Cookie store operations used to remove legacy Host authentication cookies. */
@@ -105,7 +77,7 @@ const PLUGIN_BUNDLE_PATH = /^\/plugins\//u
  * no later launch can reuse.
  * @param request - Request from the application origin.
  * @param host - Owned Host URL.
- * @param cookie - Host-issued authentication cookie.
+ * @param cookie - Desktop-private credential carried in the Cookie header for the owned Host.
  * @returns Host response without connection-level headers.
  */
 export async function forwardWebRequest(request: Request, host: string, cookie: string): Promise<Response> {

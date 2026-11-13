@@ -13,7 +13,7 @@ import type { BigIntStats, Dirent, Stats } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { homedir } from 'node:os'
-import { FsError, FsTargetKey, FsVersion, fsErrorFromErrno } from '@deepseek-ai/dsh-fs'
+import { FsError, type FsTargetKey, type FsVersion, fsErrorFromErrno } from '@deepseek-ai/dsh-fs'
 import type { FsEditMatchStrategy } from '@deepseek-ai/dsh-fs'
 import { findLiteralMatches, formatLiteralMismatch, locateLiteralMismatch, replaceLiteralMatches } from '@deepseek-ai/dsh-fs-patch'
 import { copyFileDaclWin32, replaceFileWin32 } from './win32.ts'
@@ -28,6 +28,7 @@ import {
   UnencodableTextError,
 } from '@deepseek-ai/dsh-fs'
 import type { DetectedTextEncoding, StreamDecoder, TextEncoding } from '@deepseek-ai/dsh-fs'
+import { brandString } from '@deepseek-ai/dsh-brand'
 
 const BINARY_SAMPLE_BYTES = 8192
 /** Bytes sampled to detect a file's encoding; a larger file decides from this head. */
@@ -107,7 +108,7 @@ async function readFileAbortable(absolutePath: string, displayPath: string, verb
 
 /** Opaque version token from high-resolution identity and freshness metadata. */
 function versionOf(info: BigIntStats): FsVersion {
-  return FsVersion(`${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`)
+  return brandString<FsVersion>(`${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`)
 }
 
 /**
@@ -214,7 +215,7 @@ export async function resolveLocalTarget(cwd: string, path: string): Promise<Loc
   const displayPath = localDisplayPath(cwd, path)
   try {
     // Prefer the file's own realpath (resolves a symlinked file to its target).
-    return { displayPath, targetKey: FsTargetKey(await realpath(displayPath)) }
+    return { displayPath, targetKey: brandString<FsTargetKey>(await realpath(displayPath)) }
   } catch (error: unknown) {
     // A path component is a file, not a directory (e.g. "afile/child.txt" where
     // "afile" is a regular file): the target can neither exist nor be created,
@@ -245,7 +246,7 @@ export async function resolveLocalTarget(cwd: string, path: string): Promise<Loc
         }
       }
       /* v8 ignore stop */
-      return { displayPath, targetKey: FsTargetKey(join(realAncestor, ...missing)) }
+      return { displayPath, targetKey: brandString<FsTargetKey>(join(realAncestor, ...missing)) }
     } catch (error: unknown) {
       /* v8 ignore next -- native Windows coverage exercises the FsError raised by the repair above. */
       if (error instanceof FsError) throw error
@@ -253,7 +254,7 @@ export async function resolveLocalTarget(cwd: string, path: string): Promise<Loc
       if (!isENOENT(error)) throw fsErrorFromErrno('resolve', displayPath, error)
       const parent = dirname(ancestor)
       /* v8 ignore next -- the filesystem root always realpaths, so the walk terminates before parent === ancestor. */
-      if (parent === ancestor) return { displayPath, targetKey: FsTargetKey(displayPath) }
+      if (parent === ancestor) return { displayPath, targetKey: brandString<FsTargetKey>(displayPath) }
       missing.unshift(basename(ancestor))
       ancestor = parent
     }

@@ -23,6 +23,7 @@ import { decodeText, detectEncoding, UndecodableTextError } from '@deepseek-ai/d
 import {
   BUNDLED_SKILL_RANK,
   isSkillName,
+  SkillError,
   type SkillCandidate,
   type SkillDefinition,
   type SkillInvocationPolicy,
@@ -880,7 +881,7 @@ async function readSkillText(ctx: Context, path: string, signal?: AbortSignal, t
   } catch (error) {
     signal?.throwIfAborted()
     if (isAbsentSkillPathError(error)) return undefined
-    throw error
+    throw new SkillError(`failed to read skill file ${path}: ${errorMessage(error)}`, 'SKILL_READ_FAILED', { cause: error })
   }
 }
 
