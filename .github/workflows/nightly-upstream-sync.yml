@@ -220,6 +220,20 @@ jobs:
           set -euo pipefail
           title="Nightly upstream sync failed"
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          # Forks commonly disable Issues. The failure must not compound into a
+          # second red job just because the report has nowhere to go; the run
+          # itself already carries the failing job and its log.
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .has_issues)" != "true" ]; then
+            echo "::warning::Issues are disabled for $GITHUB_REPOSITORY; skipping the failure report."
+            {
+              echo "### Nightly upstream sync failed"
+              echo ""
+              echo "失败运行：$run_url"
+              echo ""
+              echo "Issues 已禁用，未创建/更新问题；请查看失败作业日志。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
             --search "$title in:title" --json number --jq '.[0].number // empty')
           body="失败运行：$run_url"$'\n\n'"请检查 sync / package / publish 哪个环节失败；若是合并冲突，需要人工解决。"
