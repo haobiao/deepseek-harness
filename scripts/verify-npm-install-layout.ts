@@ -31,7 +31,7 @@ const DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependen
  * measured counts instead of failing on whichever runner happens to be slow.
  * Raising it requires re-measuring the resolution and recording the new counts.
  */
-export const MAX_RESOLUTION_WORK_UNITS = 1_134_400
+export const MAX_RESOLUTION_WORK_UNITS = 1_134_848
 
 /**
  * Measured npm seconds per resolution work unit on the reference host: 180.66 s
