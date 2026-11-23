@@ -122,6 +122,7 @@ class FakeFs extends FileSystem {
 async function setup(config: ToolFs.Config = {}) {
   const ctx = new Context()
   provideWorkingDirectoryFixture(ctx)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(NativeToolExecutor)
@@ -228,6 +229,7 @@ describe('registration', () => {
   it('stays pending until ctx.fs exists (inject)', async () => {
     const ctx = new Context()
     provideWorkingDirectoryFixture(ctx)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(NativeToolExecutor)
@@ -238,6 +240,7 @@ describe('registration', () => {
   it('unregisters everything on fiber disposal (HMR safety)', async () => {
     const ctx = new Context()
     provideWorkingDirectoryFixture(ctx)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(NativeToolExecutor)
@@ -247,7 +250,8 @@ describe('registration', () => {
     // Each tool contributes BOTH a schema and a prompt section; disposal must
     // withdraw both, not just the schemas.
     expect(ctx.tools.schemas()).toHaveLength(3)
-    const sectionNames = (a: { sections: { name: string }[] }) => a.sections.map(s => s.name).sort()
+    const sectionNames = (a: { sections: { name: string; retire?: boolean }[] }) => a.sections
+      .filter(s => !s.retire).map(s => s.name).sort()
     expect(sectionNames(await ctx.systemPrompt.assemble())).toEqual(['deployment:persona-prefix', 'deployment:persona-suffix', 'harness:identity', 'tool:edit', 'tool:read', 'tool:write'])
     await fiber.dispose()
     expect(ctx.tools.schemas()).toHaveLength(0)
@@ -798,6 +802,7 @@ describe('read caps are plugin config', () => {
   async function setupWith(config: ToolFs.Config) {
     const ctx = new Context()
     provideWorkingDirectoryFixture(ctx)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(NativeToolExecutor)
@@ -858,6 +863,7 @@ describe('read caps are plugin config', () => {
   ] as const)('rejects a non-positive or fractional %s at load', async (name, config) => {
     const ctx = new Context()
     provideWorkingDirectoryFixture(ctx)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(NativeToolExecutor)
@@ -902,10 +908,10 @@ describe('sandbox escalation API (write/edit)', () => {
   async function setupConfining(opts: { approval?: boolean } = {}) {
     const ctx = new Context()
     provideWorkingDirectoryFixture(ctx)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(NativeToolExecutor)
-    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(SandboxPolicyService, { mode: 'workspace-write' })
     await ctx.plugin(SandboxingFakeFs)
@@ -968,6 +974,7 @@ describe('sandbox escalation API (write/edit)', () => {
   it('fails load when a confining filesystem has no shared sandbox-policy resolver', async () => {
     const ctx = new Context()
     provideWorkingDirectoryFixture(ctx)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(NativeToolExecutor)
@@ -1256,6 +1263,7 @@ describe('scope-aware PTC guidance', () => {
     const mode = 'ptc'
     const ctx = new Context()
     provideWorkingDirectoryFixture(ctx)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(GuidancePtcRuntime)
     await ctx.plugin(ToolRuntime)
